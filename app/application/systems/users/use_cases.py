@@ -1,0 +1,186 @@
+"""
+Use Cases de Users — camada de Aplicação.
+
+Orquestram entidades de domínio, repositórios e eventos.
+Toda lógica de negócio vive no domínio; aqui apenas coordenamos.
+"""
+
+from __future__ import annotations
+
+from typing import Optional, Sequence
+
+from app.domain.systems.users.entity import User, UserRole
+from app.domain.systems.users.repository import IUserRepository
+from app.domain.systems.users.authorization_service import (
+    AuthorizationError,
+    AuthorizationService,
+)
+from app.application.dtos.user_dtos import (
+    DeleteUserCommand,
+    GetUserByIdQuery,
+    ListUsersQuery,
+    LoginCommand,
+    RegisterUserCommand,
+    TokenResult,
+    UpdateUserCommand,
+    UserResult,
+)
+from app.application.shared.unit_of_work import UnitOfWork
+
+
+def _to_result(user: User) -> UserResult:
+    return UserResult(
+        id=user.id,
+        username=user.username,
+        email=user.email,
+        role=user.role.value,
+        is_active=user.is_active,
+        created_at=user.created_at.isoformat() if user.created_at else "",
+        updated_at=user.updated_at.isoformat() if user.updated_at else None,
+    )
+
+
+class RegisterUserUseCase:
+    """Registra um novo usuário."""
+
+    def __init__(self, repo: IUserRepository, uow: UnitOfWork, hash_fn) -> None:
+        self._repo = repo
+        self._uow = uow
+        self._hash_fn = hash_fn
+
+    async def execute(self, cmd: RegisterUserCommand) -> UserResult:
+        # Unicidade
+        if await self._repo.get_by_email(cmd.email):
+            raise ValueError("Email já cadastrado")
+        if await self._repo.get_by_username(cmd.username):
+            raise ValueError("Username já cadastrado")
+
+        # Cria entidade de domínio
+        role = UserRole(cmd.role) if cmd.role in [r.value for r in UserRole] else UserRole.USER
+        user = User(
+            username=cmd.username,
+            email=cmd.email,
+            hashed_password=self._hash_fn(cmd.password),
+            role=role,
+        )
+
+        created = await self._repo.create(user)
+        created.record_creation()
+        self._uow.collect_events_from(created)
+        await self._uow.commit()
+        return _to_result(created)
+
+
+class LoginUseCase:
+    """Autentica usuário e gera token JWT."""
+
+    def __init__(self, repo: IUserRepository, verify_fn, token_fn) -> None:
+        self._repo = repo
+        self._verify_fn = verify_fn
+        self._token_fn = token_fn
+
+    async def execute(self, cmd: LoginCommand) -> TokenResult:
+        user = await self._repo.get_by_username(cmd.username)
+        if not user or not self._verify_fn(cmd.password, user.hashed_password):
+            raise ValueError("Credenciais inválidas")
+        if not user.is_active:
+            raise ValueError("Usuário inativo")
+
+        token = self._token_fn(data={"sub": str(user.id), "role": user.role.value})
+        return TokenResult(access_token=token)
+
+
+class GetUserUseCase:
+    """Busca usuário por ID."""
+
+    def __init__(self, repo: IUserRepository) -> None:
+        self._repo = repo
+
+    async def execute(self, query: GetUserByIdQuery) -> Optional[UserResult]:
+        user = await self._repo.get_by_id(query.user_id)
+        return _to_result(user) if user else None
+
+
+class ListUsersUseCase:
+    """Lista todos os usuários (apenas admin)."""
+
+    def __init__(self, repo: IUserRepository) -> None:
+        self._repo = repo
+
+    async def execute(self, query: ListUsersQuery, actor: User) -> list[UserResult]:
+        AuthorizationService.ensure_can_manage_users(actor)
+        users = await self._repo.list_all()
+        return [_to_result(u) for u in users]
+
+
+class UpdateUserUseCase:
+    """Atualiza dados de um usuário."""
+
+    def __init__(self, repo: IUserRepository, uow: UnitOfWork, hash_fn) -> None:
+        self._repo = repo
+        self._uow = uow
+        self._hash_fn = hash_fn
+
+    async def execute(self, cmd: UpdateUserCommand, actor: User) -> UserResult:
+        user = await self._repo.get_by_id(cmd.user_id)
+        if not user:
+            raise ValueError("Usuário não encontrado")
+
+        # Permissão: próprio usuário ou admin
+        AuthorizationService.ensure_owner_or_admin(actor, cmd.user_id)
+
+        changed: dict = {}
+
+        if cmd.username is not None and cmd.username != user.username:
+            changed["username"] = {"old": user.username, "new": cmd.username}
+            user.username = cmd.username
+
+        if cmd.email is not None and cmd.email != user.email:
+            changed["email"] = {"old": user.email, "new": cmd.email}
+            user.email = cmd.email
+
+        if cmd.password is not None:
+            user.hashed_password = self._hash_fn(cmd.password)
+            changed["password"] = {"old": "***", "new": "***"}
+
+        if cmd.role is not None:
+            new_role = UserRole(cmd.role)
+            AuthorizationService.ensure_can_change_role(actor, user, new_role)
+            user.change_role(new_role, performed_by=actor.id)
+            changed["role"] = {"old": user.role.value, "new": cmd.role}
+
+        if cmd.is_active is not None and cmd.is_active != user.is_active:
+            AuthorizationService.ensure_can_manage_users(actor)
+            changed["is_active"] = {"old": user.is_active, "new": cmd.is_active}
+            if cmd.is_active:
+                user.activate()
+            else:
+                user.deactivate()
+
+        if changed:
+            user.record_update(changed, performed_by=cmd.performed_by)
+
+        updated = await self._repo.update(user)
+        self._uow.collect_events_from(updated)
+        await self._uow.commit()
+        return _to_result(updated)
+
+
+class DeleteUserUseCase:
+    """Deleta um usuário (apenas admin)."""
+
+    def __init__(self, repo: IUserRepository, uow: UnitOfWork) -> None:
+        self._repo = repo
+        self._uow = uow
+
+    async def execute(self, cmd: DeleteUserCommand, actor: User) -> None:
+        AuthorizationService.ensure_can_delete_user(actor, cmd.user_id)
+
+        user = await self._repo.get_by_id(cmd.user_id)
+        if not user:
+            raise ValueError("Usuário não encontrado")
+
+        user.record_deletion(performed_by=cmd.performed_by)
+        self._uow.collect_events_from(user)
+        await self._repo.delete(cmd.user_id)
+        await self._uow.commit()
