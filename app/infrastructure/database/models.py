@@ -78,10 +78,11 @@ class TicketModel(Base):
         Enum("open", "in_progress", "done", name="ticket_status_enum", create_type=True),
         nullable=False,
         server_default="open",
+        index=True,
     )
-    milestones = Column(JSON().with_variant(JSONB, "postgresql"), default=list)
-    assigned_to = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    milestones = Column(JSONB, default=list)
+    assigned_to = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
@@ -99,11 +100,12 @@ class LLMDatasetModel(Base):
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     prompt_text = Column(Text, nullable=False)
     response_text = Column(Text, nullable=False)
-    target_model = Column(String(100), default="")
+    target_model = Column(String(100), default="", index=True)
     status = Column(
         Enum("pending", "processing", "completed", "failed", name="finetuning_status_enum", create_type=True),
         nullable=False,
         server_default="pending",
+        index=True,
     )
     metadata_ = Column("metadata", JSON().with_variant(JSONB, "postgresql"), default=dict)
     inserted_at = Column(DateTime(timezone=True), server_default=func.now())
