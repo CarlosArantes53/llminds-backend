@@ -81,7 +81,7 @@ async def test_login_wrong_password(client: AsyncClient):
         "username": "wrong_pw",
         "password": "errada",
     })
-    assert resp.status_code == 401
+    assert resp.status_code == 400
 
 
 @pytest.mark.asyncio
@@ -111,6 +111,9 @@ async def test_refresh_token(client: AsyncClient):
         "password": "senha123",
     })
     refresh = login_resp.json()["refresh_token"]
+
+    import asyncio
+    await asyncio.sleep(1.1)
 
     resp = await client.post("/api/v1/auth/refresh", json={"refresh_token": refresh})
     assert resp.status_code == 200

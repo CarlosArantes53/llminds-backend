@@ -32,9 +32,11 @@ from app.presentation.api.v1.deps import (
     verify_password,
 )
 from app.infrastructure.config import get_settings
+from app.presentation.api.v1.limiter import InMemoryRateLimiter
 
 router = APIRouter()
 settings = get_settings()
+login_limiter = InMemoryRateLimiter(requests=10, window=60)
 
 
 @router.post(
@@ -63,6 +65,7 @@ async def register(
     "/login",
     response_model=TokenOut,
     summary="Login — gera access + refresh token",
+    dependencies=[Depends(login_limiter)],
 )
 async def login(
     payload: LoginRequest,

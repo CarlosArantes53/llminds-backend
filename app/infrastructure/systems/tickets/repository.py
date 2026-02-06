@@ -102,6 +102,7 @@ class TicketRepository(ITicketRepository):
         model.milestones = ticket.milestones_as_dicts()
         model.assigned_to = ticket.assigned_to
         await self._session.flush()
+        await self._session.refresh(model)
         return self._to_entity(model)
 
     async def delete(self, ticket_id: int) -> None:
