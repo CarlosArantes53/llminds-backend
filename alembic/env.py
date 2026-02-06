@@ -1,4 +1,4 @@
-"""Alembic env.py — configurado para migrações assíncronas com SQLAlchemy 2.0."""
+"""Alembic env.py — migrações assíncronas com SQLAlchemy 2.0 + asyncpg."""
 
 import asyncio
 from logging.config import fileConfig
@@ -10,10 +10,15 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 # Importa Base e TODOS os modelos para que o autogenerate funcione
 from app.infrastructure.database.session import Base
 from app.infrastructure.database import models  # noqa: F401
+from app.infrastructure.config import get_settings
 
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
+
+# Sobrescreve a URL do alembic.ini com a URL async dos settings
+settings = get_settings()
+config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
 
 target_metadata = Base.metadata
 

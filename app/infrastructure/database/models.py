@@ -57,7 +57,11 @@ class UserModel(Base):
         "TicketModel", back_populates="assignee", foreign_keys="TicketModel.assigned_to"
     )
     datasets = relationship("LLMDatasetModel", back_populates="owner")
-    audit_logs = relationship("UserAuditLogModel", back_populates="user")
+    audit_logs = relationship(
+        "UserAuditLogModel", 
+        back_populates="user", 
+        foreign_keys="UserAuditLogModel.user_id"
+    )
 
 
 # ────────────────────────────────────────────────────────────────
