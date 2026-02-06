@@ -36,6 +36,11 @@ async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
 # Override dependency
 app.dependency_overrides[get_db] = override_get_db
 
+# Disable rate limiting for tests
+from app.presentation.api.v1.endpoints.auth import login_limiter
+async def no_op_limiter(): pass
+app.dependency_overrides[login_limiter] = no_op_limiter
+
 
 @pytest_asyncio.fixture(autouse=True)
 async def setup_db():

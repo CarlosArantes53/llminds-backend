@@ -119,6 +119,7 @@ class DatasetRepository(IDatasetRepository):
         model.status = dataset.status.value
         model.metadata_ = dataset.metadata
         await self._session.flush()
+        await self._session.refresh(model)
         return self._to_entity(model)
 
     async def delete(self, dataset_id: int) -> None:
