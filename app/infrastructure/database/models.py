@@ -23,6 +23,7 @@ from sqlalchemy import (
     String,
     Text,
     func,
+    JSON,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
@@ -78,7 +79,7 @@ class TicketModel(Base):
         nullable=False,
         server_default="open",
     )
-    milestones = Column(JSONB, default=list)
+    milestones = Column(JSON().with_variant(JSONB, "postgresql"), default=list)
     assigned_to = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -104,7 +105,7 @@ class LLMDatasetModel(Base):
         nullable=False,
         server_default="pending",
     )
-    metadata_ = Column("metadata", JSONB, default=dict)
+    metadata_ = Column("metadata", JSON().with_variant(JSONB, "postgresql"), default=dict)
     inserted_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
@@ -120,7 +121,7 @@ class UserAuditLogModel(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     action = Column(String(50), nullable=False)       # "created", "updated", "deleted", "role_changed"
-    changed_fields = Column(JSONB, default=dict)       # {"field": {"old": ..., "new": ...}}
+    changed_fields = Column(JSON().with_variant(JSONB, "postgresql"), default=dict)       # {"field": {"old": ..., "new": ...}}
     performed_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     performed_at = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -136,6 +137,6 @@ class DatasetAuditLogModel(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     dataset_id = Column(Integer, ForeignKey("llm_datasets.id", ondelete="CASCADE"), nullable=False, index=True)
     action = Column(String(50), nullable=False)        # "created", "updated", "deleted", "status_changed"
-    changed_fields = Column(JSONB, default=dict)
+    changed_fields = Column(JSON().with_variant(JSONB, "postgresql"), default=dict)
     performed_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     performed_at = Column(DateTime(timezone=True), server_default=func.now())
