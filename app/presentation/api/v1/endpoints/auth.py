@@ -37,6 +37,7 @@ from app.presentation.api.v1.limiter import InMemoryRateLimiter
 router = APIRouter()
 settings = get_settings()
 login_limiter = InMemoryRateLimiter(requests=10, window=60)
+register_limiter = InMemoryRateLimiter(requests=5, window=60)
 
 
 @router.post(
@@ -45,6 +46,7 @@ login_limiter = InMemoryRateLimiter(requests=10, window=60)
     status_code=status.HTTP_201_CREATED,
     summary="Registrar novo usuário",
     description="Cria uma conta com username, email e senha. Role padrão: user.",
+    dependencies=[Depends(register_limiter)],
 )
 async def register(
     payload: UserCreate,

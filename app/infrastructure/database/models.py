@@ -80,7 +80,7 @@ class TicketModel(Base):
         server_default="open",
         index=True,
     )
-    milestones = Column(JSONB, default=list)
+    milestones = Column(JSON().with_variant(JSONB, "postgresql"), default=list)
     assigned_to = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
