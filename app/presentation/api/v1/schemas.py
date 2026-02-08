@@ -55,9 +55,8 @@ class UserCreate(BaseModel):
     username: str = Field(..., min_length=3, max_length=150, examples=["joao_silva"])
     email: str = Field(..., max_length=255, examples=["joao@empresa.com"])
     password: str = Field(..., min_length=6, examples=["senhaForte123"])
-    role: UserRoleEnum = UserRoleEnum.user
 
-    model_config = {"json_schema_extra": {"example": {"username": "joao_silva", "email": "joao@empresa.com", "password": "senhaForte123", "role": "user"}}}
+    model_config = {"json_schema_extra": {"example": {"username": "joao_silva", "email": "joao@empresa.com", "password": "senhaForte123"}}}
 
 
 class UserUpdate(BaseModel):
