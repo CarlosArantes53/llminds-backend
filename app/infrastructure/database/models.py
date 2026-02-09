@@ -83,7 +83,7 @@ class TicketModel(Base):
     milestones = Column(JSON().with_variant(JSONB, "postgresql"), default=list)
     assigned_to = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     creator = relationship("UserModel", back_populates="tickets_created", foreign_keys=[created_by])
@@ -108,7 +108,7 @@ class LLMDatasetModel(Base):
         index=True,
     )
     metadata_ = Column("metadata", JSON().with_variant(JSONB, "postgresql"), default=dict)
-    inserted_at = Column(DateTime(timezone=True), server_default=func.now())
+    inserted_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     owner = relationship("UserModel", back_populates="datasets")
@@ -125,7 +125,7 @@ class UserAuditLogModel(Base):
     action = Column(String(50), nullable=False)       # "created", "updated", "deleted", "role_changed"
     changed_fields = Column(JSON().with_variant(JSONB, "postgresql"), default=dict)       # {"field": {"old": ..., "new": ...}}
     performed_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    performed_at = Column(DateTime(timezone=True), server_default=func.now())
+    performed_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 
     user = relationship("UserModel", back_populates="audit_logs", foreign_keys=[user_id])
 
@@ -141,4 +141,4 @@ class DatasetAuditLogModel(Base):
     action = Column(String(50), nullable=False)        # "created", "updated", "deleted", "status_changed"
     changed_fields = Column(JSON().with_variant(JSONB, "postgresql"), default=dict)
     performed_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    performed_at = Column(DateTime(timezone=True), server_default=func.now())
+    performed_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
