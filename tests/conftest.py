@@ -11,15 +11,20 @@ import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from passlib.context import CryptContext
 
 from app.infrastructure.database.session import Base, get_db
 from app.main import app
+from app.infrastructure.systems.users.repository import UserRepository
+from app.domain.systems.users.entity import User, UserRole
 
 # ── SQLite async para testes ──
 TEST_DATABASE_URL = "sqlite+aiosqlite:///./test.db"
 
 test_engine = create_async_engine(TEST_DATABASE_URL, echo=False)
 TestSessionLocal = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
@@ -63,12 +68,18 @@ async def client() -> AsyncGenerator[AsyncClient, None]:
 @pytest_asyncio.fixture
 async def admin_token(client: AsyncClient) -> str:
     """Registra admin e retorna token."""
-    await client.post("/api/v1/auth/register", json={
-        "username": "admin_test",
-        "email": "admin@test.com",
-        "password": "admin123",
-        "role": "admin",
-    })
+    # Create admin directly in DB to bypass API restrictions
+    async with TestSessionLocal() as session:
+        repo = UserRepository(session)
+        admin = User(
+            username="admin_test",
+            email="admin@test.com",
+            hashed_password=pwd_context.hash("admin123"),
+            role=UserRole.ADMIN,
+        )
+        await repo.create(admin)
+        await session.commit()
+
     resp = await client.post("/api/v1/auth/login", json={
         "username": "admin_test",
         "password": "admin123",

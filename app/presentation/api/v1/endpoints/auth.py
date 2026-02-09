@@ -58,7 +58,6 @@ async def register(
         username=payload.username,
         email=payload.email,
         password=payload.password,
-        role=payload.role.value,
     ))
     return UserOut(id=result.id, username=result.username, email=result.email, role=result.role, is_active=result.is_active)
 
