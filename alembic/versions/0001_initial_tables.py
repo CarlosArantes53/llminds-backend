@@ -1,17 +1,8 @@
-"""initial_tables — users, tickets, llm_datasets, audit_logs
-
-Revision ID: 0001_initial
-Revises: None
-Create Date: 2026-02-05
-"""
-from typing import Sequence, Union
-
-from alembic import op
 import sqlalchemy as sa
+from typing import Sequence, Union
+from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.dialects.postgresql import ENUM
 
-# revision identifiers
 revision: str = "0001_initial"
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
@@ -19,35 +10,14 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Definição dos Enums
-    user_role_enum = ENUM('admin', 'agent', 'user', name='user_role_enum', create_type=False)
-    ticket_status_enum = sa.Enum("open", "in_progress", "done", name="ticket_status_enum")
-    finetuning_status_enum = sa.Enum("pending", "processing", "completed", "failed", name="finetuning_status_enum")
 
-    # Helper para criar tipos com segurança (ignora se já existir)
-    def create_enum_safe(enum_obj):
-        try:
-            enum_obj.create(op.get_bind(), checkfirst=True)
-        except sa.exc.ProgrammingError as e:
-            # Captura erro de "type already exists" do Postgres
-            if "already exists" in str(e):
-                pass
-            else:
-                raise e
-
-    # Tenta criar os tipos
-    create_enum_safe(user_role_enum)
-    create_enum_safe(ticket_status_enum)
-    create_enum_safe(finetuning_status_enum)
-
-    # ── USERS ──
     op.create_table(
         "users",
         sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
         sa.Column("username", sa.String(150), unique=True, nullable=False, index=True),
         sa.Column("email", sa.String(255), unique=True, nullable=False, index=True),
         sa.Column("hashed_password", sa.Text(), nullable=False),
-        sa.Column("role", sa.Enum('admin', 'agent', 'user', name='user_role_enum', create_type=False), nullable=False, server_default="user"),
+        sa.Column("role", sa.String(255), nullable=False, server_default="user"),
         sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("true")),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
@@ -59,7 +29,7 @@ def upgrade() -> None:
         sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
         sa.Column("title", sa.String(255), nullable=False),
         sa.Column("description", sa.Text(), server_default=""),
-        sa.Column("status", ticket_status_enum, nullable=False, server_default="open"),
+        sa.Column("status", sa.String(100), nullable=False, server_default="open"),
         sa.Column("milestones", JSONB(), nullable=True),
         sa.Column("assigned_to", sa.Integer(), sa.ForeignKey("users.id", ondelete="SET NULL"), nullable=True),
         sa.Column("created_by", sa.Integer(), sa.ForeignKey("users.id", ondelete="SET NULL"), nullable=True),
@@ -75,7 +45,7 @@ def upgrade() -> None:
         sa.Column("prompt_text", sa.Text(), nullable=False),
         sa.Column("response_text", sa.Text(), nullable=False),
         sa.Column("target_model", sa.String(100), server_default=""),
-        sa.Column("status", finetuning_status_enum, nullable=False, server_default="pending"),
+        sa.Column("status", sa.String(100), nullable=False, server_default="pending"),
         sa.Column("metadata", JSONB(), nullable=True),
         sa.Column("inserted_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
@@ -110,8 +80,3 @@ def downgrade() -> None:
     op.drop_table("llm_datasets")
     op.drop_table("tickets")
     op.drop_table("users")
-
-    # Drop enums
-    sa.Enum(name="finetuning_status_enum").drop(op.get_bind(), checkfirst=True)
-    sa.Enum(name="ticket_status_enum").drop(op.get_bind(), checkfirst=True)
-    sa.Enum(name="user_role_enum").drop(op.get_bind(), checkfirst=True)
