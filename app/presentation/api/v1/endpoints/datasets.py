@@ -26,8 +26,10 @@ from app.application.dtos.dataset_dtos import (
     DeleteDatasetCommand,
     DeleteRowCommand,
     GetDatasetByIdQuery,
+    RowInput,  # <--- Importante: Importar RowInput
     UpdateDatasetCommand,
     UpdateRowCommand,
+    DatasetResult,
 )
 from app.application.systems.datasets.use_cases import (
     AddRowUseCase,
@@ -56,22 +58,47 @@ from app.presentation.api.v1.deps import get_current_active_user, get_uow, get_d
 router = APIRouter()
 
 
-def _to_out(r) -> DatasetOut:
+def _to_out(r: DatasetResult) -> DatasetOut:
+    """Converte DatasetResult (Aplicação) -> DatasetOut (API)."""
     return DatasetOut(
-        id=r.id, user_id=r.user_id,
-        prompt_text=r.prompt_text, response_text=r.response_text,
-        target_model=r.target_model, status=r.status,
+        id=r.id,
+        user_id=r.user_id,
+        name=r.name,
+        target_model=r.target_model,
+        status=r.status,
         metadata=r.metadata,
+        row_count=r.row_count,
+        rows=[
+            DatasetRowOut(
+                id=row.id,
+                dataset_id=row.dataset_id,
+                prompt_text=row.prompt_text,
+                response_text=row.response_text,
+                category=row.category,
+                semantics=row.semantics,
+                order=row.order,
+                inserted_at=row.inserted_at,
+                updated_at=row.updated_at,
+            ) for row in r.rows
+        ],
+        inserted_at=r.inserted_at,
+        updated_at=r.updated_at,
     )
 
 
 def _entity_to_out(d) -> DatasetOut:
+    """Converte LLMDataset (Domínio) -> DatasetOut (API). Usado em listagens."""
     return DatasetOut(
-        id=d.id, user_id=d.user_id,
-        prompt_text=d.prompt_text, response_text=d.response_text,
-        target_model=d.target_model, status=d.status.value,
+        id=d.id,
+        user_id=d.user_id,
+        name=d.name,
+        target_model=d.target_model,
+        status=d.status.value,
         metadata=d.metadata,
-        inserted_at=d.inserted_at, updated_at=d.updated_at,
+        row_count=d.row_count,
+        rows=[],  # Listagem geralmente não retorna rows pesadas
+        inserted_at=d.inserted_at,
+        updated_at=d.updated_at,
     )
 
 
@@ -83,7 +110,7 @@ def _entity_to_out(d) -> DatasetOut:
     "/",
     response_model=DatasetOut,
     status_code=status.HTTP_201_CREATED,
-    summary="Inserir par prompt/response",
+    summary="Criar novo dataset",
 )
 async def create_dataset(
     payload: DatasetCreate,
@@ -92,12 +119,23 @@ async def create_dataset(
     current_user: User = Depends(get_current_active_user),
 ):
     uc = CreateDatasetUseCase(repo, uow)
+    
+    # Converter schema rows -> DTO RowInput
+    rows_input = [
+        RowInput(
+            prompt_text=r.prompt_text,
+            response_text=r.response_text,
+            category=r.category,
+            semantics=r.semantics
+        ) for r in payload.rows
+    ]
+
     result = await uc.execute(CreateDatasetCommand(
         user_id=current_user.id,
-        prompt_text=payload.prompt_text,
-        response_text=payload.response_text,
+        name=payload.name,
         target_model=payload.target_model,
         metadata=payload.metadata,
+        rows=rows_input,
     ))
     return _to_out(result)
 
@@ -169,8 +207,7 @@ async def update_dataset(
         UpdateDatasetCommand(
             dataset_id=dataset_id,
             performed_by=current_user.id,
-            prompt_text=payload.prompt_text,
-            response_text=payload.response_text,
+            name=payload.name,
             target_model=payload.target_model,
             status=payload.status.value if payload.status else None,
             metadata=payload.metadata,
@@ -223,11 +260,20 @@ async def bulk_create_datasets(
         try:
             ds = LLMDataset(
                 user_id=current_user.id,
-                prompt_text=item.prompt_text,
-                response_text=item.response_text,
+                name=item.name,  # Atualizado para usar name
                 target_model=item.target_model,
                 metadata=item.metadata,
             )
+            # Adicionar rows
+            from app.domain.systems.datasets.entity import DatasetRow
+            for r in item.rows:
+                ds.add_row(DatasetRow(
+                    prompt_text=r.prompt_text,
+                    response_text=r.response_text,
+                    category=r.category,
+                    semantics=r.semantics
+                ))
+            
             ds.validate_content()
             entities.append(ds)
         except ValueError as e:
