@@ -21,16 +21,22 @@ from app.infrastructure.database.models import DatasetAuditLogModel
 from app.infrastructure.systems.datasets.repository import DatasetRepository
 from app.application.shared.unit_of_work import UnitOfWork
 from app.application.dtos.dataset_dtos import (
+    AddRowCommand,
     CreateDatasetCommand,
     DeleteDatasetCommand,
+    DeleteRowCommand,
     GetDatasetByIdQuery,
     UpdateDatasetCommand,
+    UpdateRowCommand,
 )
 from app.application.systems.datasets.use_cases import (
+    AddRowUseCase,
     CreateDatasetUseCase,
     DeleteDatasetUseCase,
+    DeleteRowUseCase,
     GetDatasetUseCase,
     UpdateDatasetUseCase,
+    UpdateRowUseCase,
 )
 from app.presentation.api.v1.schemas import (
     DatasetAuditLogOut,
@@ -38,6 +44,9 @@ from app.presentation.api.v1.schemas import (
     DatasetBulkCreateResponse,
     DatasetCreate,
     DatasetOut,
+    DatasetRowCreate,
+    DatasetRowOut,
+    DatasetRowUpdate,
     DatasetUpdate,
     FineTuningStatusEnum,
     PaginatedResponse,
@@ -264,3 +273,82 @@ async def get_dataset_audit_logs(
         )
         for log in logs
     ]
+
+# ════════════════════════════════════════════════════════════════
+# ROW ENDPOINTS
+# ════════════════════════════════════════════════════════════════
+
+@router.post(
+    "/{dataset_id}/rows",
+    response_model=DatasetRowOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="Adicionar linha ao dataset",
+)
+async def add_row(
+    dataset_id: int,
+    payload: DatasetRowCreate,
+    repo: DatasetRepository = Depends(get_dataset_repo),
+    uow: UnitOfWork = Depends(get_uow),
+    current_user: User = Depends(get_current_active_user),
+):
+    uc = AddRowUseCase(repo, uow)
+    result = await uc.execute(
+        AddRowCommand(
+            dataset_id=dataset_id,
+            performed_by=current_user.id,
+            prompt_text=payload.prompt_text,
+            response_text=payload.response_text,
+            category=payload.category,
+            semantics=payload.semantics,
+        ),
+        actor=current_user,
+    )
+    return result
+
+
+@router.patch(
+    "/{dataset_id}/rows/{row_id}",
+    response_model=DatasetRowOut,
+    summary="Atualizar linha do dataset",
+)
+async def update_row(
+    dataset_id: int,
+    row_id: int,
+    payload: DatasetRowUpdate,
+    repo: DatasetRepository = Depends(get_dataset_repo),
+    uow: UnitOfWork = Depends(get_uow),
+    current_user: User = Depends(get_current_active_user),
+):
+    uc = UpdateRowUseCase(repo, uow)
+    result = await uc.execute(
+        UpdateRowCommand(
+            row_id=row_id,
+            dataset_id=dataset_id,
+            performed_by=current_user.id,
+            prompt_text=payload.prompt_text,
+            response_text=payload.response_text,
+            category=payload.category,
+            semantics=payload.semantics,
+        ),
+        actor=current_user,
+    )
+    return result
+
+
+@router.delete(
+    "/{dataset_id}/rows/{row_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Deletar linha do dataset",
+)
+async def delete_row(
+    dataset_id: int,
+    row_id: int,
+    repo: DatasetRepository = Depends(get_dataset_repo),
+    uow: UnitOfWork = Depends(get_uow),
+    current_user: User = Depends(get_current_active_user),
+):
+    uc = DeleteRowUseCase(repo, uow)
+    await uc.execute(
+        DeleteRowCommand(row_id=row_id, dataset_id=dataset_id, performed_by=current_user.id),
+        actor=current_user,
+    )

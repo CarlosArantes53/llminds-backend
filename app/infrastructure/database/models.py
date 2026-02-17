@@ -97,21 +97,45 @@ class LLMDatasetModel(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    prompt_text = Column(Text, nullable=False)
-    response_text = Column(Text, nullable=False)
+    name = Column(String(255), nullable=False)
+    # REMOVIDOS: prompt_text, response_text
     target_model = Column(String(100), default="", index=True)
-    status = Column(
-        String(100),
-        nullable=False,
-        server_default="pending",
-        index=True,
-    )
+    status = Column(String(100), nullable=False, server_default="pending", index=True)
     metadata_ = Column("metadata", JSON().with_variant(JSONB, "postgresql"), default=dict)
     inserted_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     owner = relationship("UserModel", back_populates="datasets")
+    rows = relationship(
+        "DatasetRowModel",
+        back_populates="dataset",
+        cascade="all, delete-orphan",
+        order_by="DatasetRowModel.order",
+    )
 
+
+# ────────────────────────────────────────────────────────────────
+# LLM DATASET ROWS (linhas de dados)
+# ────────────────────────────────────────────────────────────────
+class DatasetRowModel(Base):
+    __tablename__ = "llm_dataset_rows"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    dataset_id = Column(
+        Integer,
+        ForeignKey("llm_datasets.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    prompt_text = Column(Text, nullable=False)
+    response_text = Column(Text, nullable=False)
+    category = Column(String(255), nullable=False, server_default="")
+    semantics = Column(String(255), nullable=False, server_default="")
+    order = Column(Integer, nullable=False, server_default="0")
+    inserted_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    dataset = relationship("LLMDatasetModel", back_populates="rows")
 
 # ────────────────────────────────────────────────────────────────
 # AUDIT LOGS — Modificações de Usuário

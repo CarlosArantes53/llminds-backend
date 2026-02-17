@@ -180,18 +180,51 @@ class FineTuningStatusEnum(str, Enum):
     processing = "processing"
     completed = "completed"
     failed = "failed"
+# ════════════════════════════════════════════════════════════════
+# LLM DATASET ROWS
+# ════════════════════════════════════════════════════════════════
 
-
-class DatasetCreate(BaseModel):
+class DatasetRowCreate(BaseModel):
     prompt_text: str = Field(..., min_length=1, examples=["O que é machine learning?"])
     response_text: str = Field(..., min_length=1, examples=["Machine learning é um subcampo da IA..."])
+    category: str = Field(default="", examples=["conceitos-basicos"])
+    semantics: str = Field(default="", examples=["definição"])
+
+
+class DatasetRowUpdate(BaseModel):
+    prompt_text: Optional[str] = None
+    response_text: Optional[str] = None
+    category: Optional[str] = None
+    semantics: Optional[str] = None
+
+
+class DatasetRowOut(BaseModel):
+    id: int
+    dataset_id: int
+    prompt_text: str
+    response_text: str
+    category: str
+    semantics: str
+    order: int
+    inserted_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
+
+
+# ════════════════════════════════════════════════════════════════
+# LLM DATASETS (container)
+# ════════════════════════════════════════════════════════════════
+
+class DatasetCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255, examples=["Dataset de ML Básico"])
     target_model: str = Field(default="", examples=["llama-3"])
     metadata: dict[str, Any] = Field(default_factory=dict)
+    rows: list[DatasetRowCreate] = Field(default_factory=list)
 
 
 class DatasetUpdate(BaseModel):
-    prompt_text: Optional[str] = None
-    response_text: Optional[str] = None
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
     target_model: Optional[str] = None
     status: Optional[FineTuningStatusEnum] = None
     metadata: Optional[dict[str, Any]] = None
@@ -200,22 +233,38 @@ class DatasetUpdate(BaseModel):
 class DatasetOut(BaseModel):
     id: int
     user_id: int
-    prompt_text: str
-    response_text: str
+    name: str
     target_model: str
     status: str
     metadata: dict[str, Any]
+    row_count: int = 0
+    rows: list[DatasetRowOut] = Field(default_factory=list)
     inserted_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 
 
+class DatasetListOut(BaseModel):
+    """Versão leve para listagem (sem rows completas)."""
+    id: int
+    user_id: int
+    name: str
+    target_model: str
+    status: str
+    row_count: int = 0
+    inserted_at: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
+
+
+# ── Bulk import (agora cada item pode ter múltiplas rows) ──
+
 class DatasetBulkItem(BaseModel):
-    prompt_text: str = Field(..., min_length=1)
-    response_text: str = Field(..., min_length=1)
+    name: str = Field(..., min_length=1)
     target_model: str = ""
     metadata: dict[str, Any] = Field(default_factory=dict)
+    rows: list[DatasetRowCreate] = Field(..., min_length=1)
 
 
 class DatasetBulkCreateRequest(BaseModel):

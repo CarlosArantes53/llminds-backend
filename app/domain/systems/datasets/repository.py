@@ -3,13 +3,13 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Optional, Sequence
 
-from .entity import LLMDataset, FineTuningStatus
+from .entity import LLMDataset, DatasetRow, FineTuningStatus
 
 
 class IDatasetRepository(ABC):
 
     @abstractmethod
-    async def get_by_id(self, dataset_id: int) -> Optional[LLMDataset]:
+    async def get_by_id(self, dataset_id: int, load_rows: bool = True) -> Optional[LLMDataset]:
         ...
 
     @abstractmethod
@@ -56,4 +56,22 @@ class IDatasetRepository(ABC):
 
     @abstractmethod
     async def delete(self, dataset_id: int) -> None:
+        ...
+
+    # ── Row-level operations ──
+
+    @abstractmethod
+    async def add_row(self, dataset_id: int, row: DatasetRow) -> DatasetRow:
+        ...
+
+    @abstractmethod
+    async def update_row(self, row: DatasetRow) -> DatasetRow:
+        ...
+
+    @abstractmethod
+    async def delete_row(self, row_id: int) -> None:
+        ...
+
+    @abstractmethod
+    async def get_rows(self, dataset_id: int) -> Sequence[DatasetRow]:
         ...

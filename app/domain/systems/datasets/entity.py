@@ -1,4 +1,4 @@
-"""Entidade de domínio LLMDataset — com eventos de domínio."""
+"""Entidades de domínio — LLMDataset (container) + DatasetRow (linhas)."""
 
 from __future__ import annotations
 
@@ -23,29 +23,65 @@ class FineTuningStatus(str, enum.Enum):
     FAILED = "failed"
 
 
-# Transições válidas de fine-tuning
 _STATUS_TRANSITIONS: dict[FineTuningStatus, list[FineTuningStatus]] = {
     FineTuningStatus.PENDING: [FineTuningStatus.PROCESSING],
     FineTuningStatus.PROCESSING: [FineTuningStatus.COMPLETED, FineTuningStatus.FAILED],
-    FineTuningStatus.FAILED: [FineTuningStatus.PENDING],  # permite re-tentativa
+    FineTuningStatus.FAILED: [FineTuningStatus.PENDING],
     FineTuningStatus.COMPLETED: [],
 }
+
+
+@dataclass
+class DatasetRow:
+    """Uma linha de dados dentro de um dataset."""
+    id: Optional[int] = None
+    dataset_id: Optional[int] = None
+    prompt_text: str = ""
+    response_text: str = ""
+    category: str = ""
+    semantics: str = ""
+    order: int = 0
+    inserted_at: datetime = field(default_factory=datetime.utcnow)
+    updated_at: Optional[datetime] = None
+
+    def validate(self) -> None:
+        if not self.prompt_text.strip():
+            raise ValueError("prompt_text não pode ser vazio")
+        if not self.response_text.strip():
+            raise ValueError("response_text não pode ser vazio")
 
 
 @dataclass
 class LLMDataset(AggregateRoot):
     id: Optional[int] = None
     user_id: Optional[int] = None
-    prompt_text: str = ""
-    response_text: str = ""
+    name: str = ""
     target_model: str = ""
     status: FineTuningStatus = FineTuningStatus.PENDING
     metadata: dict = field(default_factory=dict)
+    rows: list[DatasetRow] = field(default_factory=list)
     inserted_at: datetime = field(default_factory=datetime.utcnow)
     updated_at: Optional[datetime] = None
 
     def __post_init__(self):
         AggregateRoot.__init__(self)
+
+    # ── Rows ──
+
+    def add_row(self, row: DatasetRow) -> None:
+        row.dataset_id = self.id
+        row.order = len(self.rows)
+        row.validate()
+        self.rows.append(row)
+
+    def remove_row(self, row_id: int) -> None:
+        self.rows = [r for r in self.rows if r.id != row_id]
+        for i, r in enumerate(self.rows):
+            r.order = i
+
+    @property
+    def row_count(self) -> int:
+        return len(self.rows)
 
     # ── Status transitions ──
 
@@ -69,10 +105,10 @@ class LLMDataset(AggregateRoot):
     # ── Validation ──
 
     def validate_content(self) -> None:
-        if not self.prompt_text.strip():
-            raise ValueError("prompt_text não pode ser vazio")
-        if not self.response_text.strip():
-            raise ValueError("response_text não pode ser vazio")
+        if not self.name.strip():
+            raise ValueError("name não pode ser vazio")
+        for row in self.rows:
+            row.validate()
 
     # ── Events ──
 
