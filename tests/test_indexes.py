@@ -3,6 +3,7 @@ from app.infrastructure.database.models import (
     LLMDatasetModel,
     UserAuditLogModel,
     DatasetAuditLogModel,
+    UserModel,
 )
 
 def test_ticket_model_indexes():
@@ -21,3 +22,7 @@ def test_user_audit_log_model_indexes():
 def test_dataset_audit_log_model_indexes():
     """Verify that DatasetAuditLogModel has an index on performed_at."""
     assert DatasetAuditLogModel.performed_at.index is True, "DatasetAuditLogModel.performed_at should have index=True"
+
+def test_user_model_role_index():
+    """Verify that UserModel has an index on role."""
+    assert UserModel.role.index is True, "UserModel.role should have index=True"
