@@ -17,7 +17,6 @@ from sqlalchemy import (
     Boolean,
     Column,
     DateTime,
-    Enum,
     ForeignKey,
     Integer,
     String,
@@ -42,7 +41,7 @@ class UserModel(Base):
     email = Column(String(255), unique=True, nullable=False, index=True)
     hashed_password = Column(Text, nullable=False)
     role = Column(
-        Enum("admin", "agent", "user", name="user_role_enum", create_type=True),
+        String(100),
         nullable=False,
         server_default="user",
     )
@@ -75,7 +74,7 @@ class TicketModel(Base):
     title = Column(String(255), nullable=False)
     description = Column(Text, default="")
     status = Column(
-        Enum("open", "in_progress", "done", name="ticket_status_enum", create_type=True),
+        String(100),
         nullable=False,
         server_default="open",
         index=True,
@@ -102,7 +101,7 @@ class LLMDatasetModel(Base):
     response_text = Column(Text, nullable=False)
     target_model = Column(String(100), default="", index=True)
     status = Column(
-        Enum("pending", "processing", "completed", "failed", name="finetuning_status_enum", create_type=True),
+        String(100),
         nullable=False,
         server_default="pending",
         index=True,
