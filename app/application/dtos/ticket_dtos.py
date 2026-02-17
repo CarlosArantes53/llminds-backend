@@ -86,5 +86,67 @@ class TicketResult:
     milestones: list[dict[str, Any]]
     assigned_to: Optional[int]
     created_by: Optional[int]
+    replies: list[ReplyResult] = field(default_factory=list)
+    attachments: list[AttachmentResult] = field(default_factory=list)
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+# ════════════════════════════════════════════════════════════════
+# REPLY COMMANDS
+# ════════════════════════════════════════════════════════════════
+
+@dataclass(frozen=True)
+class AddReplyCommand:
+    ticket_id: int
+    author_id: int
+    body: str
+
+
+@dataclass(frozen=True)
+class AssignTicketCommand:
+    ticket_id: int
+    agent_id: int
+    performed_by: int
+
+
+# ════════════════════════════════════════════════════════════════
+# ATTACHMENT COMMANDS
+# ════════════════════════════════════════════════════════════════
+
+@dataclass(frozen=True)
+class AddAttachmentCommand:
+    ticket_id: int
+    reply_id: Optional[int]  # None = anexo direto no ticket
+    uploaded_by: int
+    original_filename: str
+    stored_filename: str
+    content_type: str
+    file_size: int
+
+
+# ════════════════════════════════════════════════════════════════
+# REPLY/ATTACHMENT RESULTS
+# ════════════════════════════════════════════════════════════════
+
+@dataclass
+class AttachmentResult:
+    id: int
+    ticket_id: int
+    reply_id: Optional[int]
+    uploaded_by: Optional[int]
+    original_filename: str
+    stored_filename: str
+    content_type: str
+    file_size: int
+    created_at: Optional[str] = None
+
+
+@dataclass
+class ReplyResult:
+    id: int
+    ticket_id: int
+    author_id: Optional[int]
+    body: str
+    attachments: list[AttachmentResult] = field(default_factory=list)
     created_at: Optional[str] = None
     updated_at: Optional[str] = None

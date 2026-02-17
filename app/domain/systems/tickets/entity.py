@@ -44,6 +44,55 @@ class Ticket(AggregateRoot):
     created_by: Optional[int] = None    # FK → User
     created_at: datetime = field(default_factory=datetime.utcnow)
     updated_at: Optional[datetime] = None
+    replies: list[TicketReply] = field(default_factory=list)
+    attachments: list[TicketAttachment] = field(default_factory=list)
+
+    # ── Assignment (regra de negócio) ──
+
+    def assign_to_agent(
+        self,
+        agent_id: int,
+        agent_role: str,
+        assigned_by: int,
+        assigner_role: str,
+    ) -> None:
+        """Apenas admin pode atribuir, e apenas para agentes."""
+        if assigner_role != "admin":
+            raise ValueError("Apenas administradores podem atribuir tickets")
+        if agent_role != "agent":
+            raise ValueError("Tickets só podem ser atribuídos a usuários com role 'agent'")
+
+        old = self.assigned_to
+        self.assigned_to = agent_id
+        self.updated_at = datetime.utcnow()
+        self._record_event(TicketAssigned(
+            ticket_id=self.id,
+            old_assignee=old,
+            new_assignee=agent_id,
+            assigned_by=assigned_by,
+        ))
+
+    # ── Replies (regra de negócio) ──
+
+    def can_reply(self, user_id: int, user_role: str) -> bool:
+        """Criador, agente atribuído ou admin podem responder."""
+        if user_role == "admin":
+            return True
+        if user_id == self.created_by:
+            return True
+        if user_id == self.assigned_to:
+            return True
+        return False
+
+    def add_reply(self, reply: TicketReply, user_role: str) -> None:
+        if not self.can_reply(reply.author_id, user_role):
+            raise ValueError(
+                "Apenas o criador do ticket, agente atribuído ou admin podem responder"
+            )
+        reply.ticket_id = self.id
+        reply.validate()
+        self.replies.append(reply)
+        self.updated_at = datetime.utcnow()
 
     def __post_init__(self):
         AggregateRoot.__init__(self)
@@ -142,3 +191,32 @@ class Ticket(AggregateRoot):
             ticket_id=self.id,
             deleted_by=deleted_by,
         ))
+
+@dataclass
+class TicketAttachment:
+    """Value object para anexo de ticket."""
+    id: Optional[int] = None
+    ticket_id: Optional[int] = None
+    reply_id: Optional[int] = None
+    uploaded_by: Optional[int] = None
+    original_filename: str = ""
+    stored_filename: str = ""
+    content_type: str = ""
+    file_size: int = 0
+    created_at: datetime = field(default_factory=datetime.utcnow)
+
+
+@dataclass
+class TicketReply:
+    """Uma resposta/mensagem em um ticket."""
+    id: Optional[int] = None
+    ticket_id: Optional[int] = None
+    author_id: Optional[int] = None
+    body: str = ""
+    attachments: list[TicketAttachment] = field(default_factory=list)
+    created_at: datetime = field(default_factory=datetime.utcnow)
+    updated_at: Optional[datetime] = None
+
+    def validate(self) -> None:
+        if not self.body.strip():
+            raise ValueError("body da resposta não pode ser vazio")

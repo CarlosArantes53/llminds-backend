@@ -9,14 +9,17 @@ from __future__ import annotations
 import math
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-
+from fastapi import APIRouter, Depends, HTTPException, Query, status, File, UploadFile
+from app.application.systems.users.use_cases import AddReplyUseCase, AssignTicketUseCase, GetTicketWithRepliesUseCase
+from app.infrastructure.services.file_storage import FileStorageService, FileStorageError
 from app.domain.systems.tickets.entity import TicketStatus
 from app.domain.systems.users.entity import User
 from app.infrastructure.systems.tickets.repository import TicketRepository
 from app.application.shared.unit_of_work import UnitOfWork
 from app.application.dtos.ticket_dtos import (
     AddMilestoneCommand,
+    AddReplyCommand,
+    AssignTicketCommand,
     CompleteMilestoneCommand,
     CreateTicketCommand,
     DeleteTicketCommand,
@@ -33,17 +36,23 @@ from app.application.systems.tickets.use_cases import (
     TransitionTicketUseCase,
     UpdateTicketUseCase,
 )
+from app.infrastructure.systems.users.repository import UserRepository
 from app.presentation.api.v1.schemas import (
+    AgentOut,
+    AssignTicketRequest,
     MilestoneAddRequest,
     MilestoneCompleteRequest,
     PaginatedResponse,
+    TicketAttachmentOut,
     TicketCreate,
     TicketOut,
+    TicketReplyCreate,
+    TicketReplyOut,
     TicketStatusEnum,
     TicketUpdate,
     TransitionRequest,
 )
-from app.presentation.api.v1.deps import get_current_active_user, get_uow, get_ticket_repo
+from app.presentation.api.v1.deps import get_current_active_user, get_uow, get_ticket_repo, get_user_repo, require_roles
 
 router = APIRouter()
 
@@ -135,18 +144,42 @@ def _to_out_entity(t) -> TicketOut:
 @router.get(
     "/{ticket_id}",
     response_model=TicketOut,
-    summary="Detalhe de um ticket",
+    summary="Detalhe de um ticket (com replies e anexos)",
 )
 async def get_ticket(
     ticket_id: int,
     repo: TicketRepository = Depends(get_ticket_repo),
     _user: User = Depends(get_current_active_user),
 ):
-    uc = GetTicketUseCase(repo)
+    uc = GetTicketWithRepliesUseCase(repo)
     result = await uc.execute(GetTicketByIdQuery(ticket_id=ticket_id))
     if not result:
         raise HTTPException(status_code=404, detail="Ticket não encontrado")
-    return _to_out(result)
+
+    # Preencher download_url nos attachments
+    def _with_url(att):
+        return TicketAttachmentOut(
+            **att.__dict__,
+            download_url=f"/api/v1/tickets/{ticket_id}/attachments/{att.id}/download",
+        )
+
+    return TicketOut(
+        id=result.id, title=result.title, description=result.description,
+        status=result.status, milestones=result.milestones,
+        assigned_to=result.assigned_to, created_by=result.created_by,
+        replies=[
+            TicketReplyOut(
+                id=r.id, ticket_id=r.ticket_id, author_id=r.author_id,
+                body=r.body,
+                attachments=[_with_url(a) for a in r.attachments],
+                created_at=r.created_at,
+                updated_at=r.updated_at,
+            )
+            for r in result.replies
+        ],
+        attachments=[_with_url(a) for a in result.attachments],
+        created_at=result.created_at, updated_at=result.updated_at,
+    )
 
 
 @router.patch(
@@ -262,3 +295,266 @@ async def complete_milestone(
         performed_by=current_user.id,
     ))
     return _to_out(result)
+
+# ════════════════════════════════════════════════════════════════
+# ASSIGNMENT (admin → agent)
+# ════════════════════════════════════════════════════════════════
+
+@router.post(
+    "/{ticket_id}/assign",
+    response_model=TicketOut,
+    summary="Atribuir ticket a um agente (admin only)",
+)
+async def assign_ticket(
+    ticket_id: int,
+    payload: AssignTicketRequest,
+    repo: TicketRepository = Depends(get_ticket_repo),
+    user_repo: UserRepository = Depends(get_user_repo),
+    uow: UnitOfWork = Depends(get_uow),
+    current_user: User = Depends(get_current_active_user),
+):
+    uc = AssignTicketUseCase(repo, user_repo, uow)
+    result = await uc.execute(
+        AssignTicketCommand(
+            ticket_id=ticket_id,
+            agent_id=payload.agent_id,
+            performed_by=current_user.id,
+        ),
+        actor=current_user,
+    )
+    return _to_out(result)
+
+
+@router.get(
+    "/agents",
+    response_model=list[AgentOut],
+    summary="Listar agentes disponíveis para atribuição",
+)
+async def list_agents(
+    repo: TicketRepository = Depends(get_ticket_repo),
+    _admin: User = Depends(require_roles("admin")),
+):
+    agents = await repo.list_agents()
+    return [AgentOut(id=a["id"], username=a["username"]) for a in agents]
+
+
+# ════════════════════════════════════════════════════════════════
+# REPLIES
+# ════════════════════════════════════════════════════════════════
+
+@router.post(
+    "/{ticket_id}/replies",
+    response_model=TicketReplyOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="Adicionar resposta ao ticket",
+    description="Criador do ticket, agente atribuído ou admin podem responder.",
+)
+async def add_reply(
+    ticket_id: int,
+    payload: TicketReplyCreate,
+    repo: TicketRepository = Depends(get_ticket_repo),
+    uow: UnitOfWork = Depends(get_uow),
+    current_user: User = Depends(get_current_active_user),
+):
+    uc = AddReplyUseCase(repo, uow)
+    result = await uc.execute(
+        AddReplyCommand(
+            ticket_id=ticket_id,
+            author_id=current_user.id,
+            body=payload.body,
+        ),
+        actor=current_user,
+    )
+    return TicketReplyOut(
+        id=result.id,
+        ticket_id=result.ticket_id,
+        author_id=result.author_id,
+        author_username=current_user.username,
+        body=result.body,
+        created_at=result.created_at,
+    )
+
+
+@router.get(
+    "/{ticket_id}/replies",
+    response_model=list[TicketReplyOut],
+    summary="Listar respostas de um ticket",
+)
+async def list_replies(
+    ticket_id: int,
+    repo: TicketRepository = Depends(get_ticket_repo),
+    _user: User = Depends(get_current_active_user),
+):
+    replies = await repo.get_replies(ticket_id)
+    return [
+        TicketReplyOut(
+            id=r.id, ticket_id=r.ticket_id, author_id=r.author_id,
+            body=r.body,
+            attachments=[
+                TicketAttachmentOut(
+                    id=a.id, ticket_id=a.ticket_id, reply_id=a.reply_id,
+                    uploaded_by=a.uploaded_by,
+                    original_filename=a.original_filename,
+                    stored_filename=a.stored_filename,
+                    content_type=a.content_type,
+                    file_size=a.file_size,
+                    download_url=f"/api/v1/tickets/{a.ticket_id}/attachments/{a.id}/download",
+                    created_at=a.created_at,
+                )
+                for a in r.attachments
+            ],
+            created_at=r.created_at,
+        )
+        for r in replies
+    ]
+
+
+# ════════════════════════════════════════════════════════════════
+# ATTACHMENTS (upload + download)
+# ════════════════════════════════════════════════════════════════
+
+@router.post(
+    "/{ticket_id}/attachments",
+    response_model=TicketAttachmentOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="Upload de anexo ao ticket (imagem ou PDF)",
+    description="Aceita: image/jpeg, image/png, image/gif, image/webp, application/pdf. Max 10MB.",
+)
+async def upload_attachment(
+    ticket_id: int,
+    file: UploadFile = File(...),
+    reply_id: Optional[int] = Query(default=None, description="ID da reply (ou null para anexo do ticket)"),
+    repo: TicketRepository = Depends(get_ticket_repo),
+    uow: UnitOfWork = Depends(get_uow),
+    current_user: User = Depends(get_current_active_user),
+):
+    # Verificar se ticket existe
+    ticket = await repo.get_by_id(ticket_id)
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket não encontrado")
+
+    # Verificar permissão (mesma regra de reply)
+    from app.domain.systems.users.authorization_service import AuthorizationService, AuthorizationError
+    try:
+        AuthorizationService.ensure_can_reply_ticket(
+            current_user, ticket.created_by, ticket.assigned_to
+        )
+    except AuthorizationError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+
+    # Salvar arquivo
+    storage = FileStorageService()
+    try:
+        file_info = await storage.save(ticket_id, file)
+    except FileStorageError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    # Persistir metadados
+    from app.domain.systems.tickets.entity import TicketAttachment
+    attachment = TicketAttachment(
+        ticket_id=ticket_id,
+        reply_id=reply_id,
+        uploaded_by=current_user.id,
+        **file_info,
+    )
+    created = await repo.add_attachment(attachment)
+    await uow.commit()
+
+    return TicketAttachmentOut(
+        id=created.id,
+        ticket_id=created.ticket_id,
+        reply_id=created.reply_id,
+        uploaded_by=created.uploaded_by,
+        original_filename=created.original_filename,
+        stored_filename=created.stored_filename,
+        content_type=created.content_type,
+        file_size=created.file_size,
+        download_url=f"/api/v1/tickets/{ticket_id}/attachments/{created.id}/download",
+        created_at=created.created_at,
+    )
+
+
+@router.post(
+    "/{ticket_id}/replies/{reply_id}/attachments",
+    response_model=TicketAttachmentOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="Upload de anexo em uma resposta específica",
+)
+async def upload_reply_attachment(
+    ticket_id: int,
+    reply_id: int,
+    file: UploadFile = File(...),
+    repo: TicketRepository = Depends(get_ticket_repo),
+    uow: UnitOfWork = Depends(get_uow),
+    current_user: User = Depends(get_current_active_user),
+):
+    # Reutiliza a mesma lógica do upload_attachment com reply_id preenchido
+    ticket = await repo.get_by_id(ticket_id)
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket não encontrado")
+
+    from app.domain.systems.users.authorization_service import AuthorizationService, AuthorizationError
+    try:
+        AuthorizationService.ensure_can_reply_ticket(
+            current_user, ticket.created_by, ticket.assigned_to
+        )
+    except AuthorizationError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+
+    storage = FileStorageService()
+    try:
+        file_info = await storage.save(ticket_id, file)
+    except FileStorageError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    from app.domain.systems.tickets.entity import TicketAttachment
+    attachment = TicketAttachment(
+        ticket_id=ticket_id,
+        reply_id=reply_id,
+        uploaded_by=current_user.id,
+        **file_info,
+    )
+    created = await repo.add_attachment(attachment)
+    await uow.commit()
+
+    return TicketAttachmentOut(
+        id=created.id,
+        ticket_id=created.ticket_id,
+        reply_id=created.reply_id,
+        uploaded_by=created.uploaded_by,
+        original_filename=created.original_filename,
+        stored_filename=created.stored_filename,
+        content_type=created.content_type,
+        file_size=created.file_size,
+        download_url=f"/api/v1/tickets/{ticket_id}/attachments/{created.id}/download",
+        created_at=created.created_at,
+    )
+
+
+@router.get(
+    "/{ticket_id}/attachments/{attachment_id}/download",
+    summary="Download de anexo",
+)
+async def download_attachment(
+    ticket_id: int,
+    attachment_id: int,
+    repo: TicketRepository = Depends(get_ticket_repo),
+    _user: User = Depends(get_current_active_user),
+):
+    from fastapi.responses import FileResponse
+
+    attachments = await repo.get_attachments(ticket_id)
+    attachment = next((a for a in attachments if a.id == attachment_id), None)
+    if not attachment:
+        raise HTTPException(status_code=404, detail="Anexo não encontrado")
+
+    storage = FileStorageService()
+    file_path = storage.get_path(ticket_id, attachment.stored_filename)
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Arquivo não encontrado no disco")
+
+    return FileResponse(
+        path=str(file_path),
+        filename=attachment.original_filename,
+        media_type=attachment.content_type,
+    )

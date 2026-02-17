@@ -5,6 +5,7 @@ Centraliza regras de permissão — lógica pura de domínio, sem dependências 
 """
 
 from __future__ import annotations
+from typing import Optional
 
 from app.domain.systems.users.entity import User, UserRole
 
@@ -54,3 +55,29 @@ class AuthorizationService:
     def ensure_can_access_dataset(actor: User, dataset_owner_id: int) -> None:
         if actor.id != dataset_owner_id and not actor.is_admin():
             raise AuthorizationError("Acesso negado ao dataset")
+    @staticmethod
+    def ensure_can_assign_ticket(actor: User) -> None:
+        """Apenas admin pode atribuir tickets."""
+        if not actor.is_admin():
+            raise AuthorizationError("Apenas administradores podem atribuir tickets")
+
+    @staticmethod
+    def ensure_is_agent(target: User) -> None:
+        """Verifica se o target é agente."""
+        if target.role != UserRole.AGENT:
+            raise AuthorizationError(
+                f"Usuário {target.username} não é agente (role={target.role.value})"
+            )
+
+    @staticmethod
+    def ensure_can_reply_ticket(actor: User, ticket_created_by: int, ticket_assigned_to: Optional[int]) -> None:
+        """Criador, agente atribuído ou admin podem responder."""
+        if actor.is_admin():
+            return
+        if actor.id == ticket_created_by:
+            return
+        if ticket_assigned_to and actor.id == ticket_assigned_to:
+            return
+        raise AuthorizationError(
+            "Apenas o criador, agente atribuído ou admin podem responder a este ticket"
+        )

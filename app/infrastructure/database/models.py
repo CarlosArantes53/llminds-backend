@@ -88,6 +88,18 @@ class TicketModel(Base):
     creator = relationship("UserModel", back_populates="tickets_created", foreign_keys=[created_by])
     assignee = relationship("UserModel", back_populates="tickets_assigned", foreign_keys=[assigned_to])
 
+    replies = relationship(
+        "TicketReplyModel",
+        back_populates="ticket",
+        cascade="all, delete-orphan",
+        order_by="TicketReplyModel.created_at",
+    )
+    attachments = relationship(
+        "TicketAttachmentModel",
+        back_populates="ticket",
+        cascade="all, delete-orphan",
+        order_by="TicketAttachmentModel.created_at",
+    )
 
 # ────────────────────────────────────────────────────────────────
 # LLM DATASETS
@@ -165,3 +177,69 @@ class DatasetAuditLogModel(Base):
     changed_fields = Column(JSON().with_variant(JSONB, "postgresql"), default=dict)
     performed_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     performed_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+# ────────────────────────────────────────────────────────────────
+# TICKET REPLIES
+# ────────────────────────────────────────────────────────────────
+class TicketReplyModel(Base):
+    __tablename__ = "ticket_replies"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    ticket_id = Column(
+        Integer,
+        ForeignKey("tickets.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    author_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    body = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    ticket = relationship("TicketModel", back_populates="replies")
+    author = relationship("UserModel")
+    attachments = relationship(
+        "TicketAttachmentModel",
+        back_populates="reply",
+        cascade="all, delete-orphan",
+    )
+
+
+# ────────────────────────────────────────────────────────────────
+# TICKET ATTACHMENTS
+# ────────────────────────────────────────────────────────────────
+class TicketAttachmentModel(Base):
+    __tablename__ = "ticket_attachments"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    ticket_id = Column(
+        Integer,
+        ForeignKey("tickets.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    reply_id = Column(
+        Integer,
+        ForeignKey("ticket_replies.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    uploaded_by = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    original_filename = Column(String(500), nullable=False)
+    stored_filename = Column(String(500), nullable=False)
+    content_type = Column(String(100), nullable=False)
+    file_size = Column(Integer, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    ticket = relationship("TicketModel", back_populates="attachments")
+    reply = relationship("TicketReplyModel", back_populates="attachments")
+    uploader = relationship("UserModel")

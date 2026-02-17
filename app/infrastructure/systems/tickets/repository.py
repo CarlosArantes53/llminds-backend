@@ -6,12 +6,15 @@ from typing import Optional, Sequence
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
-from app.domain.systems.tickets.entity import Ticket, TicketStatus
 from app.domain.systems.tickets.repository import ITicketRepository
-from app.infrastructure.database.models import TicketModel
-
-
+from app.infrastructure.database.models import (
+    TicketModel, TicketReplyModel, TicketAttachmentModel, UserModel,
+)
+from app.domain.systems.tickets.entity import (
+    Ticket, TicketStatus, TicketReply, TicketAttachment,
+)
 class TicketRepository(ITicketRepository):
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
@@ -110,3 +113,126 @@ class TicketRepository(ITicketRepository):
         if model:
             await self._session.delete(model)
             await self._session.flush()
+
+    @staticmethod
+    def _attachment_to_entity(model: TicketAttachmentModel) -> TicketAttachment:
+        return TicketAttachment(
+            id=model.id,
+            ticket_id=model.ticket_id,
+            reply_id=model.reply_id,
+            uploaded_by=model.uploaded_by,
+            original_filename=model.original_filename,
+            stored_filename=model.stored_filename,
+            content_type=model.content_type,
+            file_size=model.file_size,
+            created_at=model.created_at,
+        )
+
+    @staticmethod
+    def _reply_to_entity(model: TicketReplyModel) -> TicketReply:
+        return TicketReply(
+            id=model.id,
+            ticket_id=model.ticket_id,
+            author_id=model.author_id,
+            body=model.body,
+            attachments=[
+                TicketRepository._attachment_to_entity(a)
+                for a in (model.attachments or [])
+            ],
+            created_at=model.created_at,
+            updated_at=model.updated_at,
+        )
+
+    # ── Get com replies ──
+
+    async def get_by_id_with_replies(self, ticket_id: int) -> Optional[Ticket]:
+        stmt = (
+            select(TicketModel)
+            .where(TicketModel.id == ticket_id)
+            .options(
+                selectinload(TicketModel.replies)
+                    .selectinload(TicketReplyModel.attachments),
+                selectinload(TicketModel.attachments),
+            )
+        )
+        result = await self._session.execute(stmt)
+        model = result.scalar_one_or_none()
+        if not model:
+            return None
+
+        ticket = self._to_entity(model)
+        ticket.replies = [self._reply_to_entity(r) for r in model.replies]
+        ticket.attachments = [self._attachment_to_entity(a) for a in model.attachments if a.reply_id is None]
+        return ticket
+
+    # ── Replies ──
+
+    async def add_reply(self, reply: TicketReply) -> TicketReply:
+        model = TicketReplyModel(
+            ticket_id=reply.ticket_id,
+            author_id=reply.author_id,
+            body=reply.body,
+        )
+        self._session.add(model)
+        await self._session.flush()
+        return TicketReply(
+            id=model.id,
+            ticket_id=model.ticket_id,
+            author_id=model.author_id,
+            body=model.body,
+            created_at=model.created_at,
+        )
+
+    async def get_replies(self, ticket_id: int) -> list[TicketReply]:
+        stmt = (
+            select(TicketReplyModel)
+            .where(TicketReplyModel.ticket_id == ticket_id)
+            .options(selectinload(TicketReplyModel.attachments))
+            .order_by(TicketReplyModel.created_at.asc())
+        )
+        result = await self._session.execute(stmt)
+        return [self._reply_to_entity(m) for m in result.scalars().all()]
+
+    # ── Attachments ──
+
+    async def add_attachment(self, attachment: TicketAttachment) -> TicketAttachment:
+        model = TicketAttachmentModel(
+            ticket_id=attachment.ticket_id,
+            reply_id=attachment.reply_id,
+            uploaded_by=attachment.uploaded_by,
+            original_filename=attachment.original_filename,
+            stored_filename=attachment.stored_filename,
+            content_type=attachment.content_type,
+            file_size=attachment.file_size,
+        )
+        self._session.add(model)
+        await self._session.flush()
+        return self._attachment_to_entity(model)
+
+    async def get_attachments(self, ticket_id: int) -> list[TicketAttachment]:
+        stmt = (
+            select(TicketAttachmentModel)
+            .where(TicketAttachmentModel.ticket_id == ticket_id)
+            .order_by(TicketAttachmentModel.created_at.asc())
+        )
+        result = await self._session.execute(stmt)
+        return [self._attachment_to_entity(m) for m in result.scalars().all()]
+
+    async def delete_attachment(self, attachment_id: int) -> None:
+        model = await self._session.get(TicketAttachmentModel, attachment_id)
+        if model:
+            await self._session.delete(model)
+            await self._session.flush()
+
+    # ── Agents ──
+
+    async def list_agents(self) -> list[dict]:
+        """Retorna lista de agentes {id, username} para dropdown."""
+        stmt = (
+            select(UserModel.id, UserModel.username)
+            .where(UserModel.role == "agent")
+            .where(UserModel.is_active == True)
+            .order_by(UserModel.username)
+        )
+        result = await self._session.execute(stmt)
+        return [{"id": row.id, "username": row.username} for row in result.all()]

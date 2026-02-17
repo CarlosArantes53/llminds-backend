@@ -145,6 +145,8 @@ class TicketOut(BaseModel):
     milestones: list[dict[str, Any]]
     assigned_to: Optional[int]
     created_by: Optional[int]
+    replies: list[TicketReplyOut] = Field(default_factory=list)
+    attachments: list[TicketAttachmentOut] = Field(default_factory=list)
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -302,3 +304,47 @@ class UserAuditLogOut(AuditLogOut):
 
 class DatasetAuditLogOut(AuditLogOut):
     dataset_id: int
+
+# ════════════════════════════════════════════════════════════════
+# TICKET REPLIES & ATTACHMENTS
+# ════════════════════════════════════════════════════════════════
+
+class TicketAttachmentOut(BaseModel):
+    id: int
+    ticket_id: int
+    reply_id: Optional[int] = None
+    uploaded_by: Optional[int] = None
+    original_filename: str
+    stored_filename: str
+    content_type: str
+    file_size: int
+    download_url: Optional[str] = None  # preenchido no endpoint
+    created_at: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
+
+
+class TicketReplyCreate(BaseModel):
+    body: str = Field(..., min_length=1, examples=["Segue o relatório atualizado."])
+
+
+class TicketReplyOut(BaseModel):
+    id: int
+    ticket_id: int
+    author_id: Optional[int] = None
+    author_username: Optional[str] = None  # preenchido via join
+    body: str
+    attachments: list[TicketAttachmentOut] = Field(default_factory=list)
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
+
+
+class AssignTicketRequest(BaseModel):
+    agent_id: int = Field(..., description="ID do usuário agente")
+
+
+class AgentOut(BaseModel):
+    id: int
+    username: str
