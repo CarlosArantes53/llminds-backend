@@ -19,13 +19,26 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    # Definição dos Enums
     user_role_enum = ENUM('admin', 'agent', 'user', name='user_role_enum', create_type=False)
     ticket_status_enum = sa.Enum("open", "in_progress", "done", name="ticket_status_enum")
     finetuning_status_enum = sa.Enum("pending", "processing", "completed", "failed", name="finetuning_status_enum")
 
-    user_role_enum.create(op.get_bind(), checkfirst=True)
-    ticket_status_enum.create(op.get_bind(), checkfirst=True)
-    finetuning_status_enum.create(op.get_bind(), checkfirst=True)
+    # Helper para criar tipos com segurança (ignora se já existir)
+    def create_enum_safe(enum_obj):
+        try:
+            enum_obj.create(op.get_bind(), checkfirst=True)
+        except sa.exc.ProgrammingError as e:
+            # Captura erro de "type already exists" do Postgres
+            if "already exists" in str(e):
+                pass
+            else:
+                raise e
+
+    # Tenta criar os tipos
+    create_enum_safe(user_role_enum)
+    create_enum_safe(ticket_status_enum)
+    create_enum_safe(finetuning_status_enum)
 
     # ── USERS ──
     op.create_table(
