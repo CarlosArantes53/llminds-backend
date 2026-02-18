@@ -142,6 +142,19 @@ def _to_out_entity(t) -> TicketOut:
 
 
 @router.get(
+    "/agents",
+    response_model=list[AgentOut],
+    summary="Listar agentes disponíveis para atribuição",
+)
+async def list_agents(
+    repo: TicketRepository = Depends(get_ticket_repo),
+    _admin: User = Depends(require_roles("admin")),
+):
+    agents = await repo.list_agents()
+    return [AgentOut(id=a["id"], username=a["username"]) for a in agents]
+
+
+@router.get(
     "/{ticket_id}",
     response_model=TicketOut,
     summary="Detalhe de um ticket (com replies e anexos)",
@@ -323,20 +336,6 @@ async def assign_ticket(
         actor=current_user,
     )
     return _to_out(result)
-
-
-@router.get(
-    "/agents",
-    response_model=list[AgentOut],
-    summary="Listar agentes disponíveis para atribuição",
-)
-async def list_agents(
-    repo: TicketRepository = Depends(get_ticket_repo),
-    _admin: User = Depends(require_roles("admin")),
-):
-    agents = await repo.list_agents()
-    return [AgentOut(id=a["id"], username=a["username"]) for a in agents]
-
 
 # ════════════════════════════════════════════════════════════════
 # REPLIES

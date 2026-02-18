@@ -301,7 +301,18 @@ class GetTicketWithRepliesUseCase:
             for r in ticket.replies
         ]
 
-        result = _to_result(ticket)
+        result = TicketResult(
+            id=ticket.id,
+            title=ticket.title,
+            description=ticket.description,
+            status=ticket.status.value,
+            milestones=ticket.milestones_as_dicts(),
+            assigned_to=ticket.assigned_to,
+            created_by=ticket.created_by,
+            created_at=ticket.created_at.isoformat() if ticket.created_at else None,
+            updated_at=ticket.updated_at.isoformat() if ticket.updated_at else None,
+        )
+        
         result.replies = replies
         result.attachments = [_att(a) for a in ticket.attachments]
         return result
