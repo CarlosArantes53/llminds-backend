@@ -37,6 +37,7 @@ from app.application.systems.tickets.use_cases import (
     UpdateTicketUseCase,
 )
 from app.infrastructure.systems.users.repository import UserRepository
+from app.domain.systems.users.authorization_service import AuthorizationService, AuthorizationError
 from app.presentation.api.v1.schemas import (
     AgentOut,
     AssignTicketRequest,
@@ -433,7 +434,6 @@ async def upload_attachment(
         raise HTTPException(status_code=404, detail="Ticket não encontrado")
 
     # Verificar permissão (mesma regra de reply)
-    from app.domain.systems.users.authorization_service import AuthorizationService, AuthorizationError
     try:
         AuthorizationService.ensure_can_reply_ticket(
             current_user, ticket.created_by, ticket.assigned_to
@@ -492,7 +492,6 @@ async def upload_reply_attachment(
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket não encontrado")
 
-    from app.domain.systems.users.authorization_service import AuthorizationService, AuthorizationError
     try:
         AuthorizationService.ensure_can_reply_ticket(
             current_user, ticket.created_by, ticket.assigned_to
@@ -538,9 +537,22 @@ async def download_attachment(
     ticket_id: int,
     attachment_id: int,
     repo: TicketRepository = Depends(get_ticket_repo),
-    _user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_active_user),
 ):
     from fastapi.responses import FileResponse
+
+    # 1. Verificar ticket
+    ticket = await repo.get_by_id(ticket_id)
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket não encontrado")
+
+    # 2. Verificar permissão
+    try:
+        AuthorizationService.ensure_can_reply_ticket(
+            current_user, ticket.created_by, ticket.assigned_to
+        )
+    except AuthorizationError as e:
+        raise HTTPException(status_code=403, detail=str(e))
 
     attachments = await repo.get_attachments(ticket_id)
     attachment = next((a for a in attachments if a.id == attachment_id), None)
