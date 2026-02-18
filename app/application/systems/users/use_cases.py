@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import Optional, Sequence
 
 from app.application.dtos.ticket_dtos import AddReplyCommand, AssignTicketCommand, AttachmentResult, GetTicketByIdQuery, ReplyResult, TicketResult
-from app.domain.systems.tickets.entity import TicketReply
+from app.domain.systems.tickets.entity import Ticket, TicketReply
 from app.domain.systems.tickets.repository import ITicketRepository
 from app.domain.systems.users.entity import User, UserRole
 from app.domain.systems.users.repository import IUserRepository
@@ -39,6 +39,19 @@ def _to_result(user: User) -> UserResult:
         is_active=user.is_active,
         created_at=user.created_at.isoformat() if user.created_at else "",
         updated_at=user.updated_at.isoformat() if user.updated_at else None,
+    )
+
+def _to_ticket_result(t: Ticket) -> TicketResult:
+    return TicketResult(
+        id=t.id,
+        title=t.title,
+        description=t.description,
+        status=t.status.value,
+        milestones=t.milestones_as_dicts(),
+        assigned_to=t.assigned_to,
+        created_by=t.created_by,
+        created_at=t.created_at.isoformat() if t.created_at else None,
+        updated_at=t.updated_at.isoformat() if t.updated_at else None,
     )
 
 
@@ -225,7 +238,7 @@ class AssignTicketUseCase:
         updated = await self._ticket_repo.update(ticket)
         self._uow.collect_events_from(updated)
         await self._uow.commit()
-        return _to_result(updated)
+        return _to_ticket_result(updated)
 
 
 # ════════════════════════════════════════════════════════════════
@@ -301,7 +314,7 @@ class GetTicketWithRepliesUseCase:
             for r in ticket.replies
         ]
 
-        result = _to_result(ticket)
+        result = _to_ticket_result(ticket)
         result.replies = replies
         result.attachments = [_att(a) for a in ticket.attachments]
         return result

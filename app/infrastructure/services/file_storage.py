@@ -20,6 +20,14 @@ class FileStorageError(Exception):
 class FileStorageService:
     """Armazena arquivos em disco local. Organiza por ticket_id."""
 
+    ALLOWED_EXTENSIONS_MAP = {
+        "image/jpeg": {".jpg", ".jpeg"},
+        "image/png": {".png"},
+        "image/gif": {".gif"},
+        "image/webp": {".webp"},
+        "application/pdf": {".pdf"},
+    }
+
     def __init__(self) -> None:
         self.base_dir = Path(settings.UPLOAD_DIR)
         self.base_dir.mkdir(parents=True, exist_ok=True)
@@ -38,6 +46,16 @@ class FileStorageService:
                 f"Permitidos: {', '.join(settings.ALLOWED_CONTENT_TYPES)}"
             )
 
+        # Validar extensão com base no content_type
+        ext = Path(file.filename or "file").suffix.lower()
+        allowed_exts = self.ALLOWED_EXTENSIONS_MAP.get(file.content_type, set())
+
+        if ext not in allowed_exts:
+            raise FileStorageError(
+                f"Extensão inválida para o tipo {file.content_type}. "
+                f"Esperado: {', '.join(sorted(allowed_exts))}"
+            )
+
         # Ler conteúdo e validar tamanho
         content = await file.read()
         if len(content) > settings.MAX_FILE_SIZE_BYTES:
@@ -46,7 +64,6 @@ class FileStorageService:
             )
 
         # Gerar nome único
-        ext = Path(file.filename or "file").suffix.lower()
         stored_name = f"{uuid.uuid4().hex}{ext}"
 
         # Salvar
