@@ -44,6 +44,7 @@ class UserModel(Base):
         String(100),
         nullable=False,
         server_default="user",
+        index=True,
     )
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -159,7 +160,7 @@ class UserAuditLogModel(Base):
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     action = Column(String(50), nullable=False)       # "created", "updated", "deleted", "role_changed"
     changed_fields = Column(JSON().with_variant(JSONB, "postgresql"), default=dict)       # {"field": {"old": ..., "new": ...}}
-    performed_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    performed_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     performed_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 
     user = relationship("UserModel", back_populates="audit_logs", foreign_keys=[user_id])
@@ -175,7 +176,7 @@ class DatasetAuditLogModel(Base):
     dataset_id = Column(Integer, ForeignKey("llm_datasets.id", ondelete="CASCADE"), nullable=False, index=True)
     action = Column(String(50), nullable=False)        # "created", "updated", "deleted", "status_changed"
     changed_fields = Column(JSON().with_variant(JSONB, "postgresql"), default=dict)
-    performed_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    performed_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     performed_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 
 # ────────────────────────────────────────────────────────────────
@@ -233,6 +234,7 @@ class TicketAttachmentModel(Base):
         Integer,
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
+        index=True,
     )
     original_filename = Column(String(500), nullable=False)
     stored_filename = Column(String(500), nullable=False)
