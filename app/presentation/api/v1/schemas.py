@@ -348,3 +348,23 @@ class AssignTicketRequest(BaseModel):
 class AgentOut(BaseModel):
     id: int
     username: str
+
+# ════════════════════════════════════════════════════════════════
+# GEMINI GENERATION
+# ════════════════════════════════════════════════════════════════
+
+class GenerateResponseRequest(BaseModel):
+    """Request para gerar resposta via Gemini API."""
+    prompt_text: str = Field(..., min_length=1, examples=["O que é machine learning?"])
+    system_instruction: Optional[str] = Field(
+        None,
+        examples=["Responda de forma técnica e detalhada."],
+        description="Instrução de sistema customizada (opcional)."
+    )
+
+
+class GenerateResponseOut(BaseModel):
+    """Response da geração via Gemini."""
+    prompt_text: str
+    generated_response: str
+    model_used: str

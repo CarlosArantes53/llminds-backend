@@ -14,7 +14,10 @@ class Settings(BaseSettings):
     POSTGRES_HOST: str = "localhost"
     POSTGRES_PORT: int = 5432
     POSTGRES_DB: str = "app_db"
-
+    
+# ── Gemini AI ──
+    GEMINI_API_KEY: str = ""
+    GEMINI_MODEL: str = "gemini-2.5-flash-lite"
     @property
     def DATABASE_URL(self) -> str:
         return (

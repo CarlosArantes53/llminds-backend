@@ -54,7 +54,9 @@ from app.presentation.api.v1.schemas import (
     PaginatedResponse,
 )
 from app.presentation.api.v1.deps import get_current_active_user, get_uow, get_dataset_repo
-
+from app.infrastructure.config import get_settings
+from app.services.gemini_service import generate_dataset_response
+from app.presentation.api.v1.schemas import GenerateResponseRequest, GenerateResponseOut
 router = APIRouter()
 
 
@@ -172,6 +174,35 @@ async def list_datasets(
         pages=math.ceil(total / page_size) if total else 0,
     )
 
+# ════════════════════════════════════════════════════════════════
+# GEMINI GENERATION
+# ════════════════════════════════════════════════════════════════
+
+@router.post(
+    "/generate-response",
+    response_model=GenerateResponseOut,
+    summary="Gerar resposta via Gemini AI",
+    description="Recebe um prompt_text e retorna uma resposta gerada pela Gemini API. "
+                "A chave de API é gerenciada no backend.",
+)
+async def generate_response(
+    payload: GenerateResponseRequest,
+    _current_user: User = Depends(get_current_active_user),
+):
+    try:
+        generated = await generate_dataset_response(
+            prompt_text=payload.prompt_text,
+            system_instruction=payload.system_instruction,
+        )
+        return GenerateResponseOut(
+            prompt_text=payload.prompt_text,
+            generated_response=generated,
+            model_used=get_settings().GEMINI_MODEL,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=502, detail=str(e))
 
 @router.get(
     "/{dataset_id}",
