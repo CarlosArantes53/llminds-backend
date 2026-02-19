@@ -70,14 +70,27 @@ class AuthorizationService:
             )
 
     @staticmethod
-    def ensure_can_reply_ticket(actor: User, ticket_created_by: int, ticket_assigned_to: Optional[int]) -> None:
-        """Criador, agente atribuído ou admin podem responder."""
+    def ensure_can_access_ticket(actor: User, ticket_created_by: int, ticket_assigned_to: Optional[int]) -> None:
+        """
+        Permite acesso se:
+        1. Admin
+        2. Criador do ticket
+        3. Agente atribuído
+        """
         if actor.is_admin():
             return
         if actor.id == ticket_created_by:
             return
         if ticket_assigned_to and actor.id == ticket_assigned_to:
             return
-        raise AuthorizationError(
-            "Apenas o criador, agente atribuído ou admin podem responder a este ticket"
-        )
+        raise AuthorizationError("Acesso negado ao ticket")
+
+    @staticmethod
+    def ensure_can_reply_ticket(actor: User, ticket_created_by: int, ticket_assigned_to: Optional[int]) -> None:
+        """Criador, agente atribuído ou admin podem responder."""
+        try:
+            AuthorizationService.ensure_can_access_ticket(actor, ticket_created_by, ticket_assigned_to)
+        except AuthorizationError:
+            raise AuthorizationError(
+                "Apenas o criador, agente atribuído ou admin podem responder a este ticket"
+            )

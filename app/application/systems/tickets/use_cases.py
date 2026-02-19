@@ -12,6 +12,7 @@ from typing import Optional
 from app.domain.systems.tickets.entity import Ticket, TicketStatus
 from app.domain.systems.tickets.repository import ITicketRepository
 from app.domain.systems.users.entity import User
+from app.domain.systems.users.authorization_service import AuthorizationService
 from app.domain.shared.value_objects import Milestone
 from app.application.dtos.ticket_dtos import (
     AddMilestoneCommand,
@@ -69,9 +70,12 @@ class GetTicketUseCase:
     def __init__(self, repo: ITicketRepository) -> None:
         self._repo = repo
 
-    async def execute(self, query: GetTicketByIdQuery) -> Optional[TicketResult]:
+    async def execute(self, query: GetTicketByIdQuery, actor: User) -> Optional[TicketResult]:
         ticket = await self._repo.get_by_id(query.ticket_id)
-        return _to_result(ticket) if ticket else None
+        if not ticket:
+            return None
+        AuthorizationService.ensure_can_access_ticket(actor, ticket.created_by, ticket.assigned_to)
+        return _to_result(ticket)
 
 
 class ListTicketsUseCase:
@@ -88,10 +92,12 @@ class UpdateTicketUseCase:
         self._repo = repo
         self._uow = uow
 
-    async def execute(self, cmd: UpdateTicketCommand) -> TicketResult:
+    async def execute(self, cmd: UpdateTicketCommand, actor: User) -> TicketResult:
         ticket = await self._repo.get_by_id(cmd.ticket_id)
         if not ticket:
             raise ValueError("Ticket não encontrado")
+
+        AuthorizationService.ensure_can_access_ticket(actor, ticket.created_by, ticket.assigned_to)
 
         if cmd.title is not None:
             ticket.title = cmd.title
@@ -118,10 +124,12 @@ class TransitionTicketUseCase:
         self._repo = repo
         self._uow = uow
 
-    async def execute(self, cmd: TransitionTicketCommand) -> TicketResult:
+    async def execute(self, cmd: TransitionTicketCommand, actor: User) -> TicketResult:
         ticket = await self._repo.get_by_id(cmd.ticket_id)
         if not ticket:
             raise ValueError("Ticket não encontrado")
+
+        AuthorizationService.ensure_can_access_ticket(actor, ticket.created_by, ticket.assigned_to)
 
         new_status = TicketStatus(cmd.new_status)
         ticket.transition_to(new_status, changed_by=cmd.performed_by)
@@ -137,10 +145,12 @@ class AddMilestoneUseCase:
         self._repo = repo
         self._uow = uow
 
-    async def execute(self, cmd: AddMilestoneCommand) -> TicketResult:
+    async def execute(self, cmd: AddMilestoneCommand, actor: User) -> TicketResult:
         ticket = await self._repo.get_by_id(cmd.ticket_id)
         if not ticket:
             raise ValueError("Ticket não encontrado")
+
+        AuthorizationService.ensure_can_access_ticket(actor, ticket.created_by, ticket.assigned_to)
 
         due = datetime.fromisoformat(cmd.due_date) if cmd.due_date else None
         milestone = Milestone(title=cmd.title, due_date=due)
@@ -157,10 +167,12 @@ class CompleteMilestoneUseCase:
         self._repo = repo
         self._uow = uow
 
-    async def execute(self, cmd: CompleteMilestoneCommand) -> TicketResult:
+    async def execute(self, cmd: CompleteMilestoneCommand, actor: User) -> TicketResult:
         ticket = await self._repo.get_by_id(cmd.ticket_id)
         if not ticket:
             raise ValueError("Ticket não encontrado")
+
+        AuthorizationService.ensure_can_access_ticket(actor, ticket.created_by, ticket.assigned_to)
 
         ticket.complete_milestone(cmd.milestone_index)
 
@@ -175,10 +187,12 @@ class DeleteTicketUseCase:
         self._repo = repo
         self._uow = uow
 
-    async def execute(self, cmd: DeleteTicketCommand) -> None:
+    async def execute(self, cmd: DeleteTicketCommand, actor: User) -> None:
         ticket = await self._repo.get_by_id(cmd.ticket_id)
         if not ticket:
             raise ValueError("Ticket não encontrado")
+
+        AuthorizationService.ensure_can_access_ticket(actor, ticket.created_by, ticket.assigned_to)
 
         ticket.record_deletion(deleted_by=cmd.performed_by)
         self._uow.collect_events_from(ticket)

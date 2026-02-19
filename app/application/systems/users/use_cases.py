@@ -274,10 +274,12 @@ class GetTicketWithRepliesUseCase:
     def __init__(self, repo: ITicketRepository) -> None:
         self._repo = repo
 
-    async def execute(self, query: GetTicketByIdQuery) -> Optional[TicketResult]:
+    async def execute(self, query: GetTicketByIdQuery, actor: User) -> Optional[TicketResult]:
         ticket = await self._repo.get_by_id_with_replies(query.ticket_id)
         if not ticket:
             return None
+
+        AuthorizationService.ensure_can_access_ticket(actor, ticket.created_by, ticket.assigned_to)
 
         def _att(a):
             return AttachmentResult(

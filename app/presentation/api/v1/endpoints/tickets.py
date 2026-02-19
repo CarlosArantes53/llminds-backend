@@ -163,10 +163,10 @@ async def list_agents(
 async def get_ticket(
     ticket_id: int,
     repo: TicketRepository = Depends(get_ticket_repo),
-    _user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_active_user),
 ):
     uc = GetTicketWithRepliesUseCase(repo)
-    result = await uc.execute(GetTicketByIdQuery(ticket_id=ticket_id))
+    result = await uc.execute(GetTicketByIdQuery(ticket_id=ticket_id), actor=current_user)
     if not result:
         raise HTTPException(status_code=404, detail="Ticket não encontrado")
 
@@ -218,7 +218,7 @@ async def update_ticket(
         status=payload.status.value if payload.status else None,
         milestones=milestones_dicts,
         assigned_to=payload.assigned_to,
-    ))
+    ), actor=current_user)
     return _to_out(result)
 
 
@@ -234,7 +234,7 @@ async def delete_ticket(
     current_user: User = Depends(get_current_active_user),
 ):
     uc = DeleteTicketUseCase(repo, uow)
-    await uc.execute(DeleteTicketCommand(ticket_id=ticket_id, performed_by=current_user.id))
+    await uc.execute(DeleteTicketCommand(ticket_id=ticket_id, performed_by=current_user.id), actor=current_user)
 
 
 # ════════════════════════════════════════════════════════════════
@@ -259,7 +259,7 @@ async def transition_ticket(
         ticket_id=ticket_id,
         new_status=payload.status.value,
         performed_by=current_user.id,
-    ))
+    ), actor=current_user)
     return _to_out(result)
 
 
@@ -286,7 +286,7 @@ async def add_milestone(
         performed_by=current_user.id,
         title=payload.title,
         due_date=payload.due_date,
-    ))
+    ), actor=current_user)
     return _to_out(result)
 
 
@@ -307,7 +307,7 @@ async def complete_milestone(
         ticket_id=ticket_id,
         milestone_index=payload.milestone_index,
         performed_by=current_user.id,
-    ))
+    ), actor=current_user)
     return _to_out(result)
 
 # ════════════════════════════════════════════════════════════════
