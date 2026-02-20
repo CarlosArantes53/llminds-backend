@@ -8,31 +8,37 @@ from tests.conftest import auth_header
 @pytest.mark.asyncio
 async def test_create_dataset(client: AsyncClient, user_token: str):
     resp = await client.post("/api/v1/datasets/", json={
-        "prompt_text": "O que é IA?",
-        "response_text": "Inteligência Artificial é...",
+        "name": "Dataset de Teste",
         "target_model": "llama-3",
+        "rows": [
+            {"prompt_text": "O que é IA?", "response_text": "Inteligência Artificial é...", "category": "cat", "semantics": "sem"}
+        ]
     }, headers=auth_header(user_token))
     assert resp.status_code == 201
     data = resp.json()
-    assert data["prompt_text"] == "O que é IA?"
+    assert data["name"] == "Dataset de Teste"
     assert data["status"] == "pending"
+    assert len(data["rows"]) == 1
+    assert data["rows"][0]["prompt_text"] == "O que é IA?"
 
 
 @pytest.mark.asyncio
-async def test_create_dataset_empty_prompt(client: AsyncClient, user_token: str):
+async def test_create_dataset_empty_name(client: AsyncClient, user_token: str):
     resp = await client.post("/api/v1/datasets/", json={
-        "prompt_text": "   ",
-        "response_text": "Resposta",
+        "name": "",
+        "target_model": "llama-3",
+        "rows": []
     }, headers=auth_header(user_token))
-    assert resp.status_code == 400
+    assert resp.status_code == 422
 
 
 @pytest.mark.asyncio
 async def test_list_datasets_paginated(client: AsyncClient, user_token: str):
     for i in range(5):
         await client.post("/api/v1/datasets/", json={
-            "prompt_text": f"Pergunta {i}",
-            "response_text": f"Resposta {i}",
+            "name": f"Dataset {i}",
+            "target_model": "llama-3",
+            "rows": []
         }, headers=auth_header(user_token))
 
     resp = await client.get("/api/v1/datasets/?page=1&page_size=3", headers=auth_header(user_token))
@@ -46,10 +52,10 @@ async def test_list_datasets_paginated(client: AsyncClient, user_token: str):
 @pytest.mark.asyncio
 async def test_filter_datasets_by_target_model(client: AsyncClient, user_token: str):
     await client.post("/api/v1/datasets/", json={
-        "prompt_text": "P1", "response_text": "R1", "target_model": "llama-3",
+        "name": "D1", "target_model": "llama-3", "rows": []
     }, headers=auth_header(user_token))
     await client.post("/api/v1/datasets/", json={
-        "prompt_text": "P2", "response_text": "R2", "target_model": "gpt-4",
+        "name": "D2", "target_model": "gpt-4", "rows": []
     }, headers=auth_header(user_token))
 
     resp = await client.get("/api/v1/datasets/?target_model=llama-3", headers=auth_header(user_token))
@@ -60,7 +66,7 @@ async def test_filter_datasets_by_target_model(client: AsyncClient, user_token: 
 @pytest.mark.asyncio
 async def test_get_dataset(client: AsyncClient, user_token: str):
     create = await client.post("/api/v1/datasets/", json={
-        "prompt_text": "P", "response_text": "R",
+        "name": "D1", "target_model": "llama-3", "rows": []
     }, headers=auth_header(user_token))
     did = create.json()["id"]
 
@@ -72,21 +78,21 @@ async def test_get_dataset(client: AsyncClient, user_token: str):
 @pytest.mark.asyncio
 async def test_update_dataset(client: AsyncClient, user_token: str):
     create = await client.post("/api/v1/datasets/", json={
-        "prompt_text": "Original", "response_text": "Original",
+        "name": "Original", "target_model": "v1", "rows": []
     }, headers=auth_header(user_token))
     did = create.json()["id"]
 
     resp = await client.patch(f"/api/v1/datasets/{did}", json={
-        "prompt_text": "Atualizado",
+        "name": "Atualizado",
     }, headers=auth_header(user_token))
     assert resp.status_code == 200
-    assert resp.json()["prompt_text"] == "Atualizado"
+    assert resp.json()["name"] == "Atualizado"
 
 
 @pytest.mark.asyncio
 async def test_delete_dataset(client: AsyncClient, user_token: str):
     create = await client.post("/api/v1/datasets/", json={
-        "prompt_text": "Del", "response_text": "Del",
+        "name": "Del", "target_model": "v1", "rows": []
     }, headers=auth_header(user_token))
     did = create.json()["id"]
 
@@ -98,9 +104,18 @@ async def test_delete_dataset(client: AsyncClient, user_token: str):
 async def test_bulk_create_datasets(client: AsyncClient, user_token: str):
     resp = await client.post("/api/v1/datasets/bulk", json={
         "items": [
-            {"prompt_text": "P1", "response_text": "R1", "target_model": "llama-3"},
-            {"prompt_text": "P2", "response_text": "R2", "target_model": "llama-3"},
-            {"prompt_text": "P3", "response_text": "R3"},
+            {
+                "name": "D1", "target_model": "llama-3",
+                "rows": [{"prompt_text": "P1", "response_text": "R1", "category": "c", "semantics": "s"}]
+            },
+            {
+                "name": "D2", "target_model": "llama-3",
+                "rows": [{"prompt_text": "P2", "response_text": "R2", "category": "c", "semantics": "s"}]
+            },
+            {
+                "name": "D3", "target_model": "gpt-4",
+                "rows": [{"prompt_text": "P3", "response_text": "R3", "category": "c", "semantics": "s"}]
+            },
         ]
     }, headers=auth_header(user_token))
     assert resp.status_code == 201
@@ -113,8 +128,14 @@ async def test_bulk_create_datasets(client: AsyncClient, user_token: str):
 async def test_bulk_create_with_errors(client: AsyncClient, user_token: str):
     resp = await client.post("/api/v1/datasets/bulk", json={
         "items": [
-            {"prompt_text": "OK", "response_text": "OK"},
-            {"prompt_text": "   ", "response_text": "Fail"},  # prompt vazio
+            {
+                "name": "OK", "target_model": "llama-3",
+                "rows": [{"prompt_text": "OK", "response_text": "OK", "category": "c", "semantics": "s"}]
+            },
+            {
+                "name": " ", "target_model": "llama-3", # name vazio deve falhar no domínio
+                "rows": [{"prompt_text": "F", "response_text": "F", "category": "c", "semantics": "s"}]
+            },
         ]
     }, headers=auth_header(user_token))
     assert resp.status_code == 201

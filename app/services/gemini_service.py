@@ -76,7 +76,7 @@ async def generate_dataset_response(
     logger.info(f"Gerando resposta via Gemini ({model}) para prompt: {prompt_text[:80]}...")
 
     try:
-        resp = client.models.generate_content(
+        resp = await client.aio.models.generate_content(
             model=model,
             contents=prompt_text.strip(),
             config=types.GenerateContentConfig(
