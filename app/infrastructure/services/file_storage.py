@@ -20,6 +20,14 @@ class FileStorageError(Exception):
 class FileStorageService:
     """Armazena arquivos em disco local. Organiza por ticket_id."""
 
+    MIME_EXTENSIONS = {
+        "image/jpeg": ".jpg",
+        "image/png": ".png",
+        "image/gif": ".gif",
+        "image/webp": ".webp",
+        "application/pdf": ".pdf",
+    }
+
     def __init__(self) -> None:
         self.base_dir = Path(settings.UPLOAD_DIR)
         self.base_dir.mkdir(parents=True, exist_ok=True)
@@ -28,6 +36,27 @@ class FileStorageService:
         d = self.base_dir / f"tickets/{ticket_id}"
         d.mkdir(parents=True, exist_ok=True)
         return d
+
+    def _validate_content(self, content: bytes, mime_type: str) -> bool:
+        """Valida magic numbers do arquivo."""
+        if mime_type == "image/webp":
+            return content.startswith(b"RIFF") and content[8:12] == b"WEBP"
+
+        signatures = {
+            "image/jpeg": [b"\xFF\xD8\xFF"],
+            "image/png": [b"\x89PNG\r\n\x1a\n"],
+            "image/gif": [b"GIF87a", b"GIF89a"],
+            "application/pdf": [b"%PDF-"],
+        }
+
+        expected = signatures.get(mime_type)
+        if not expected:
+            # Se o tipo não tiver assinatura definida mas estiver permitido nas settings,
+            # decidimos se permitimos ou bloqueamos.
+            # Como cobrimos todos os allowed types, retornamos False se não achar.
+            return False
+
+        return any(content.startswith(sig) for sig in expected)
 
     async def save(self, ticket_id: int, file: UploadFile) -> dict:
         """Salva arquivo e retorna metadados."""
@@ -45,8 +74,18 @@ class FileStorageService:
                 f"Arquivo excede o limite de {settings.MAX_FILE_SIZE_MB}MB"
             )
 
-        # Gerar nome único
-        ext = Path(file.filename or "file").suffix.lower()
+        # Validar conteúdo (Magic Numbers)
+        if not self._validate_content(content, file.content_type):
+            raise FileStorageError(
+                f"Conteúdo do arquivo não corresponde ao tipo declarado ({file.content_type})"
+            )
+
+        # Gerar nome único com extensão segura
+        ext = self.MIME_EXTENSIONS.get(file.content_type)
+        if not ext:
+            # Fallback seguro, embora _validate_content deva cobrir tudo
+            ext = ".bin"
+
         stored_name = f"{uuid.uuid4().hex}{ext}"
 
         # Salvar
