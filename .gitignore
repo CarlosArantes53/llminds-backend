@@ -4,3 +4,4 @@
 *.db
 *.cpython-312.pyc
 uploads/
+.env
