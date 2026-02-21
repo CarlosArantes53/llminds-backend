@@ -18,6 +18,7 @@ from sqlalchemy import (
     Column,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -132,6 +133,9 @@ class LLMDatasetModel(Base):
 # ────────────────────────────────────────────────────────────────
 class DatasetRowModel(Base):
     __tablename__ = "llm_dataset_rows"
+    __table_args__ = (
+        Index("ix_llm_dataset_rows_dataset_id_order", "dataset_id", "order"),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     dataset_id = Column(

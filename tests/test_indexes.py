@@ -3,6 +3,7 @@ from app.infrastructure.database.models import (
     LLMDatasetModel,
     UserAuditLogModel,
     DatasetAuditLogModel,
+    DatasetRowModel,
 )
 
 def test_ticket_model_indexes():
@@ -21,3 +22,14 @@ def test_user_audit_log_model_indexes():
 def test_dataset_audit_log_model_indexes():
     """Verify that DatasetAuditLogModel has an index on performed_at."""
     assert DatasetAuditLogModel.performed_at.index is True, "DatasetAuditLogModel.performed_at should have index=True"
+
+def test_dataset_row_model_indexes():
+    """Verify that DatasetRowModel has a composite index on (dataset_id, order)."""
+    # Check if the composite index exists in __table__.indexes
+    indexes = {i.name: i for i in DatasetRowModel.__table__.indexes}
+    assert "ix_llm_dataset_rows_dataset_id_order" in indexes, "Composite index 'ix_llm_dataset_rows_dataset_id_order' should exist"
+
+    idx = indexes["ix_llm_dataset_rows_dataset_id_order"]
+    # Check columns
+    col_names = [c.name for c in idx.columns]
+    assert col_names == ["dataset_id", "order"], f"Index columns should be ['dataset_id', 'order'], but got {col_names}"
