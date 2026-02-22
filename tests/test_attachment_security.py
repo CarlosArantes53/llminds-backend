@@ -40,9 +40,11 @@ async def test_idor_attachment_download(client: AsyncClient):
 
     # 3. User 1 uploads an attachment
     # Create a dummy file
-    files = {"file": ("secret.txt", b"This is a secret", "text/plain")}
-    # Wait, the endpoint expects specific content types. Let's use image/png.
-    files = {"file": ("secret.png", b"fakeimagecontent", "image/png")}
+    # files = {"file": ("secret.txt", b"This is a secret", "text/plain")}
+    # The endpoint expects specific content types and validates magic numbers.
+    # Use a minimal valid PNG signature.
+    valid_png_signature = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89"
+    files = {"file": ("secret.png", valid_png_signature, "image/png")}
 
     resp_upload = await client.post(
         f"/api/v1/tickets/{ticket_id}/attachments",
