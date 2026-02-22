@@ -21,6 +21,7 @@ from app.infrastructure.database.session import AsyncSessionLocal
 from app.presentation.api.v1.router import api_v1_router
 from app.presentation.middleware.exception_handlers import register_exception_handlers
 from app.presentation.middleware.request_id import RequestIdMiddleware
+from app.presentation.middleware.security_headers import SecurityHeadersMiddleware
 
 settings = get_settings()
 
@@ -83,6 +84,7 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["X-Request-ID"],
 )
+app.add_middleware(SecurityHeadersMiddleware)
 
 # ── Exception handlers globais ──
 register_exception_handlers(app)
